@@ -9,11 +9,9 @@ chmod +x start-ovs-sh.deb
 
 ## Install ONOS
 
-https://wiki.onosproject.org/display/ONOS/Getting+ONOS#GettingONOS-ONOSSourceCode
-https://wiki.onosproject.org/display/ONOS/Installing+and+Running+ONOS
+Read the onos_install.sh and run it.
 
 ### Install below features on ONOS
-
 
 ```
 feature:install onos-openflow
@@ -32,7 +30,13 @@ externalportname-set -n onos_port2
 git clone https://git.openstack.org/openstack-dev/devstack
 ```
 
-### Initialize Openstack configuration
+### configure Openstack
+
+Copy the local.conf file to the devstack directory.
+
+```
+cp local.conf devstack/local.conf
+```
 
 ### Remove existing openstack code for Fresh installation
 ```
@@ -40,6 +44,8 @@ rm -rf /opt/stack
 ```
 
 ### start Devstack
+If there are probolems with mySQL or rabbit restart the PC and unstack three times.
+
 ```
 ./unstack.sh ;./clean.sh; ./stack.sh
 ```
@@ -56,23 +62,52 @@ sudo python setup.py install
 Copy conf_onos.ini from ~/.../networking_onos/etc to /etc/neutron/plugins/ml2/ and modify /etc/neutron/plugins/ml2/conf_onos.ini with appropriate url, username and password
 
 Url: http://127.0.0.1:8181/onos/vtn
-
+vim 
 user: karaf
 password: karaf
 
 ### networking-onos setup
 
-in neutron*.egg-info/entry_points.txt
+in /etc/neutron/plugins/ml2/ml2.conf replace
+
+```
+mechanism_drivers = ...
+```
+
+with
+
+```
+mechanism_drivers = onos_ml2
+```
+
+in /opt/stack/neutron/neutron*.egg-info/entry_points.txt
 
 ```
 [neutron.ml2.mechanism_drivers]
 ...
-onos_ml2 = networking_onos.plugins.ml2.driver:ONOSMechanismDriver # add this line
+onos_ml2 = networking_onos.plugins.ml2.driver:ONOSMechanismDriver
 
 [neutron.service_plugins]
 ...
-onos_router = networking_onos.plugins.l3.driver:ONOSL3Plugin # add this line
+onos_router = networking_onos.plugins.l3.driver:ONOSL3Plugin
 ```
+
+### for internet connectivity
+```
+sudo sysctl net.ipv4.ip_forward=1 
+sudo iptables -A FORWARD -d 172.24.4.0/24 -j ACCEPT 
+sudo iptables -A FORWARD -s 172.24.4.0/24 -j ACCEPT 
+sudo iptables -t nat -A POSTROUTING -o eth1 -j MASQUERADE 
+```
+
+### for DNS
+
+in /etc/neutron/dhcp_agent.ini
+
+```
+dnsmasq_dns_servers = 8.8.8.8, 8.8.4.4
+```
+restart q-dhcp
 
 ### restart Neutron
 
@@ -92,23 +127,7 @@ start q-svc with
 	& echo $! >/opt/stack/status/stack/q-svc.pid; fg || echo "q-svc failed to start" | tee "/opt/stack/status/stack/q-svc.failure"
 ```
 
-## setup openstack
 
-### for internet connectivity
-```
-sudo sysctl net.ipv4.ip_forward=1 
-sudo iptables -A FORWARD -d 172.24.4.0/24 -j ACCEPT 
-sudo iptables -A FORWARD -s 172.24.4.0/24 -j ACCEPT 
-sudo iptables -t nat -A POSTROUTING -o eth1 -j MASQUERADE 
-```
-
-### for DNS
-
-in /etc/neutron/dhcp_agent.ini
-
-```
-dnsmasq_dns_servers = 8.8.8.8, 8.8.4.4
-```
 
 ### enable commandline
 ```
@@ -130,7 +149,7 @@ neutron router-interface-add router2 sfcSubNet
 ```
 
 verify that network was created:
-networks://<http_onos>:ip/8181/onos/vtn
+http://<ip_onos>:8181/onos/vtn/networks
 
 ### create image
 
@@ -138,7 +157,7 @@ networks://<http_onos>:ip/8181/onos/vtn
 glance image-create --name ubuntu --disk-format qcow2 --file precise-server-cloudimg-amd64-disk1.img --container-format bare # not working, use gui
 ```
 
-### Ports erstellen
+### create ports
 ```
 neutron port-create --name p1 sfcNet
 neutron port-create --name p2 sfcNet
@@ -146,10 +165,7 @@ neutron port-create --name p3 sfcNet
 neutron port-create --name p4 sfcNet
 neutron port-create --name p5 sfcNet
 neutron port-create --name p6 sfcNet
-```
 
-### port configurieren
-```
 neutron port-update p1 --no-security-groups
 neutron port-update p2 --no-security-groups
 neutron port-update p3 --no-security-groups
@@ -166,8 +182,11 @@ neutron port-update p6 --port-security-enabled=False
 ```
 
 ### boot vms, generate keypair
+Remove old keypairs and clear known hosts, create new keypair and boot instances.
 
 ```
+#nova keypair-delete osKey
+rm ~/.ssh/known_hosts
 rm osKey.pem
 nova keypair-add osKey > osKey.pem
 chmod 600 osKey.pem
@@ -179,6 +198,8 @@ nova boot --image ubuntu --flavor m1.small --nic net-name=private --nic port-id=
 ```
 
 ### configure public ports, change IP addresses to IPs in private network
+remove all security from ports in private network. They will become reachable from outside.
+
 ```
 neutron port-update $(neutron port-list |grep 10.0.0.4 |awk '{print $2}') --no-security-groups 
 neutron port-update $(neutron port-list |grep 10.0.0.5 |awk '{print $2}') --no-security-groups 
@@ -192,10 +213,28 @@ neutron port-update $(neutron port-list |grep 10.0.0.6 |awk '{print $2}') --port
 ```
 
 ### 8.4.2 Floating Address
-in openstack Horizone GUI: project > compute > instances
-for all VMs Associate Floating IP
-you should be able to reach all vms with ssh. Perharps wait a minute or two.
+you should be able to reach all vms with ssh. Perharps wait a minute or two (or 10...).
 
+```
+nova floating-ip-create public
+nova floating-ip-create public
+nova floating-ip-create public
+nova floating-ip-create public
+
+nova floating-ip-associate SRC $(nova floating-ip-list |grep 'public' | sed -n '1p'| awk '{print $4}')
+nova floating-ip-associate SF1 $(nova floating-ip-list |grep 'public' | sed -n '2p'| awk '{print $4}')
+nova floating-ip-associate SF2 $(nova floating-ip-list |grep 'public' | sed -n '3p'| awk '{print $4}')
+nova floating-ip-associate DST $(nova floating-ip-list |grep 'public' | sed -n '4p'| awk '{print $4}')
+```
+
+### ssh into VMs
+
+```
+ssh -i osKey.pem ubuntu@$(nova floating-ip-list |grep 'public' | sed -n '1p'| awk '{print $4}')
+ssh -i osKey.pem ubuntu@$(nova floating-ip-list |grep 'public' | sed -n '2p'| awk '{print $4}')
+ssh -i osKey.pem ubuntu@$(nova floating-ip-list |grep 'public' | sed -n '3p'| awk '{print $4}')
+ssh -i osKey.pem ubuntu@$(nova floating-ip-list |grep 'public' | sed -n '4p'| awk '{print $4}')
+```
 ### Setup NICs
 setup the interfaces in the vms (src, dst, sf1, sf2)
 
