@@ -186,7 +186,7 @@ Remove old keypairs and clear known hosts, create new keypair and boot instances
 
 ```
 #nova keypair-delete osKey
-rm ~/.ssh/known_hosts
+rm ~/.ssh/known_hosts # think twice about this!
 rm osKey.pem
 nova keypair-add osKey > osKey.pem
 chmod 600 osKey.pem
@@ -212,7 +212,7 @@ neutron port-update $(neutron port-list |grep 10.0.0.3 |awk '{print $2}') --port
 neutron port-update $(neutron port-list |grep 10.0.0.6 |awk '{print $2}') --port-security-enabled=False 
 ```
 
-### 8.4.2 Floating Address
+### Floating Address
 you should be able to reach all vms with ssh. Perharps wait a minute or two (or 10...).
 
 ```
