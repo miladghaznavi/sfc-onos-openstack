@@ -68,7 +68,7 @@ if [ "$nodownload" == "0" ]; then
 
     if [ $? -gt 0 ]; then
         endspin "ERROR:Cloning git repo failed."
-        exit 1
+        kill -INT $$
     fi
 fi
 
@@ -177,7 +177,7 @@ sudo dpkg-checkbuilddeps
 echos "Checking Build Dependencies."
 if [ $? -gt 0 ]; then
     endspin "ERROR:Build Dependencies not met."
-    exit 1
+    kill -INT $$
 fi
 
 spin
@@ -187,7 +187,7 @@ rm ../python-openvswitch*.deb
 DEB_BUILD_OPTIONS='parallel=8 nocheck' fakeroot debian/rules binary
 if [ $? -gt 0 ]; then
     endspin "ERROR:Creating Debian packages failed."
-    exit 1
+    kill -INT $$
 fi
 
 spin
@@ -197,7 +197,7 @@ sudo apt-get install -y dkms
 sudo dpkg --install ../openvswitch-datapath-dkms*
 if [ $? -gt 0 ]; then
     endspin "ERROR:Installing openvswitch kernel module failed."
-    exit 1
+    kill -INT $$
 fi
 
 spin
@@ -206,7 +206,7 @@ sudo dpkg --install ../openvswitch-common*
 sudo dpkg --install ../openvswitch-switch*
 if [ $? -gt 0 ]; then
     endspin "ERROR:Installing openvswitch userland packages failed."
-    exit 1
+    kill -INT $$
 fi
 
 spin
