@@ -13,9 +13,11 @@ sudo apt-get install oracle-java8-installer oracle-java8-set-default -y
 cd; git clone https://gerrit.onosproject.org/onos
 
 export JAVA_HOME=/usr/lib/jvm/java-8-oracle
-export ONOS_ROOT=~/onos
+# path to onos
+export ONOS_ROOT=~/DevEnv/onos
 source $ONOS_ROOT/tools/dev/bash_profile
-export ONOS_IP=192.168.178.62
+# local IP
+export ONOS_IP=192.168.178.44
 export ONOS_APPS=drivers,openflow,proxyarp,mobility,fwd
 
 cd onos

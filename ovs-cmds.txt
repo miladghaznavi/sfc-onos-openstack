@@ -1,0 +1,5 @@
+regeln:
+	sudo ovs-ofctl -O openflow13 dump-flows <switch>
+alle ports:
+	ovs-ofctl -O OpenFlow13 show <switch>
+
