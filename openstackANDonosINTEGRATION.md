@@ -80,6 +80,12 @@ with
 mechanism_drivers = onos_ml2
 ```
 
+you can use sed
+
+```
+sed -i 's/mechanism_drivers =.*/mechanism_drivers = onos_ml2/g' /etc/neutron/plugins/ml2/ml2_conf.ini
+```
+
 in /opt/stack/neutron/neutron*.egg-info/entry_points.txt
 
 ```
@@ -90,6 +96,12 @@ onos_ml2 = networking_onos.plugins.ml2.driver:ONOSMechanismDriver
 [neutron.service_plugins]
 ...
 onos_router = networking_onos.plugins.l3.driver:ONOSL3Plugin
+```
+
+using sed
+
+```
+
 ```
 
 ### for internet connectivity
@@ -108,6 +120,13 @@ in /etc/neutron/dhcp_agent.ini
 dnsmasq_dns_servers = 8.8.8.8, 8.8.4.4
 ```
 restart q-dhcp
+
+sed -i 's/#dnsmasq_dns_servers =.*/dnsmasq_dns_servers = 8.8.8.8, 8.8.4.4/g' /etc/neutron/dhcp_agent.ini
+
+### for DPDK VM CPU flags...
+
+sed -i 's/cpu_mode =.*/cpu_mode = host-model/g' /etc/nova/nova.conf
+
 
 ### restart Neutron
 
@@ -154,7 +173,7 @@ http://<ip_onos>:8181/onos/vtn/networks
 ### create image
 
 ```
-glance image-create --name ubuntu --disk-format qcow2 --file precise-server-cloudimg-amd64-disk1.img --container-format bare # not working, use gui
+glance image-create --name ubuntu --disk-format qcow2 --container-format bare --file 
 ```
 
 ### create ports
@@ -252,30 +271,28 @@ sudo dhclient eth2
 
 ## setup the sfc
 
-### port pairs
+### port pairs, pair group, Flow classifier, port chain
 ```
 neutron port-pair-create PP1 --ingress p2 --egress p3
 neutron port-pair-create PP2 --ingress p4 --egress p5
-```
 
-### port pair group
-```
 neutron port-pair-group-create --port-pair PP1 PPG1
 neutron port-pair-group-create --port-pair PP2 PPG2
-```
 
-### Flow classifier
-```
-neutron flow-classifier-create --source-ip-prefix 10.1.0.0/24 --destination-ip-prefix 10.1.0.0/24 --logical-source-port P1 --logical-destination-port P6 FC1
-```
+neutron flow-classifier-create --source-ip-prefix 10.1.0.3/24 --destination-ip-prefix 10.1.0.8/24 --logical-source-port P1 --logical-destination-port P6 FC1
 
-### create port chain
-```
 neutron port-chain-create --port-pair-group PPG1 --port-pair-group PPG2 --flow-classifier FC1 PC1
 ```
 
+--chain-parameters correlation=NSH
 
+### delete port chain
 
-
-
-
+```
+neutron port-chain-delete PC1
+neutron flow-classifier-delete FC1
+neutron port-pair-group-delete PPG1
+neutron port-pair-group-delete PPG2
+neutron port-pair-delete PP1
+neutron port-pair-delete PP2
+```
