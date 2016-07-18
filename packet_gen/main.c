@@ -191,10 +191,10 @@ send_packet(uint8_t port, char* msg, uint32_t msg_size) {
     ip_hdr = rte_pktmbuf_mtod_offset(m, struct ipv4_hdr *, sizeof(struct ether_hdr));
     ip_hdr->version_ihl = 0x45;
     ip_hdr->time_to_live = 64;
-    ip_hdr->src_addr = src_ip_addr;
-    ip_hdr->dst_addr = dst_ip_addr;
+    ip_hdr->src_addr = rte_cpu_to_be_32(src_ip_addr);
+    ip_hdr->dst_addr = rte_cpu_to_be_32(dst_ip_addr);
     ip_hdr->next_proto_id = IPPROTO_UDP;
-    ip_hdr->total_length = pkt_size - sizeof(struct ether_hdr);
+    ip_hdr->total_length = rte_cpu_to_be_16(pkt_size - sizeof(struct ether_hdr));
 
     ip_hdr->hdr_checksum  = rte_ipv4_cksum(ip_hdr);
 
@@ -209,7 +209,7 @@ send_packet(uint8_t port, char* msg, uint32_t msg_size) {
 
     udp_hdr->dgram_cksum = rte_cpu_to_be_16(rte_ipv4_udptcp_cksum(ip_hdr, (const void *) udp_hdr));
 
-    printf("UPD size: %"PRIu32"\n", udp_hdr->dgram_len);
+    printf("UPD size: %"PRIu16"\n", rte_be_to_cpu_16(udp_hdr->dgram_len));
     rte_eth_tx_burst(port, 0, m_array, 1);
 }
 
