@@ -80,12 +80,6 @@ with
 mechanism_drivers = onos_ml2
 ```
 
-you can use sed
-
-```
-sed -i 's/mechanism_drivers =.*/mechanism_drivers = onos_ml2/g' /etc/neutron/plugins/ml2/ml2_conf.ini
-```
-
 in /opt/stack/neutron/neutron*.egg-info/entry_points.txt
 
 ```
@@ -100,17 +94,6 @@ onos_router = networking_onos.plugins.l3.driver:ONOSL3Plugin
 
 using sed
 
-```
-
-```
-
-### for internet connectivity
-```
-sudo sysctl net.ipv4.ip_forward=1 
-sudo iptables -A FORWARD -d 172.24.4.0/24 -j ACCEPT 
-sudo iptables -A FORWARD -s 172.24.4.0/24 -j ACCEPT 
-sudo iptables -t nat -A POSTROUTING -o eth1 -j MASQUERADE 
-```
 
 ### for DNS
 
@@ -121,12 +104,23 @@ dnsmasq_dns_servers = 8.8.8.8, 8.8.4.4
 ```
 restart q-dhcp
 
+### with sed 
+
+```
+sed -i 's/mechanism_drivers =.*/mechanism_drivers = onos_ml2/g' /etc/neutron/plugins/ml2/ml2_conf.ini
+sed -i '/\[neutron.ml2.mechanism_drivers\]/a onos_ml2 = networking_onos.plugins.ml2.driver:ONOSMechanismDriver' /opt/stack/neutron/neutron*.egg-info/entry_points.txt
+sed -i '/\[neutron.service_plugins\]/a onos_router = networking_onos.plugins.l3.driver:ONOSL3Plugin' /opt/stack/neutron/neutron*.egg-info/entry_points.txt
 sed -i 's/#dnsmasq_dns_servers =.*/dnsmasq_dns_servers = 8.8.8.8, 8.8.4.4/g' /etc/neutron/dhcp_agent.ini
-
-### for DPDK VM CPU flags...
-
 sed -i 's/cpu_mode =.*/cpu_mode = host-model/g' /etc/nova/nova.conf
+```
 
+### for internet connectivity
+```
+sudo sysctl net.ipv4.ip_forward=1 
+sudo iptables -A FORWARD -d 172.24.4.0/24 -j ACCEPT 
+sudo iptables -A FORWARD -s 172.24.4.0/24 -j ACCEPT 
+sudo iptables -t nat -A POSTROUTING -o eth1 -j MASQUERADE 
+```
 
 ### restart Neutron
 
