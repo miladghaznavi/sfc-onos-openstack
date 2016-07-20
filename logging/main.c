@@ -40,6 +40,7 @@
 #include <rte_mbuf.h>
 #include <rte_byteorder.h>
 #include <rte_ip.h>
+#include <rte_udp.h>
 
 #define RX_RING_SIZE 128
 #define TX_RING_SIZE 512
@@ -110,6 +111,22 @@ log_packet(uint8_t port __rte_unused, uint16_t qidx __rte_unused,
                     printf("\t");
                     print_int32_ip(ip_dst);
                     printf("\n");
+
+                    if (ip_hdr->next_proto_id == IPPROTO_UDP) {
+                        struct udp_hdr *udp_hdr;
+                        udp_hdr = rte_pktmbuf_mtod_offset(pkt, struct udp_hdr *, 
+                            sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr));
+
+                        printf("%"PRIu16"\t%"PRIu16"\n", rte_be_to_cpu_16(udp_hdr->src_port), rte_be_to_cpu_16(udp_hdr->src_port));
+
+                        uint16_t msg_size = rte_cpu_to_be_16(udp_hdr->dgram_len);
+                        char* msg = malloc((msg_size + 1)*sizeof(char));
+                        char* msg_start = rte_pktmbuf_mtod_offset(pkt, char*, sizeof(struct ether_hdr) 
+                            + sizeof(struct ipv4_hdr) + sizeof(struct udp_hdr));
+                        memcpy(msg, msg_start, msg_size);
+                        msg[msg_size] = '\0';
+                        printf("Message< %s\n", msg);
+                    }
                 }
 
                 rte_pktmbuf_free(pkt);
@@ -226,8 +243,8 @@ main(int argc, char *argv[])
     argv += ret;
 
     nb_ports = rte_eth_dev_count();
-    if (nb_ports < 2 || (nb_ports & 1))
-            rte_exit(EXIT_FAILURE, "Error: number of ports must be even\n");
+//    if (nb_ports < 2 || (nb_ports & 1))
+//            rte_exit(EXIT_FAILURE, "Error: number of ports must be even\n");
 
     mbuf_pool = rte_pktmbuf_pool_create("MBUF_POOL",
                                         NUM_MBUFS * nb_ports, MBUF_CACHE_SIZE, 0,
