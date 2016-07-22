@@ -2,7 +2,7 @@
 
 DIR_NAME=$1
 VM_NUM=$2
-KEY_PATH=/home/weich/DevEnv/devstack/osKey.pem
+KEY_PATH=~DevEnv/devstack/osKey.pem
 
 source /home/weich/DevEnv/devstack/openrc admin
 zip -r $DIR_NAME'.zip' $DIR_NAME

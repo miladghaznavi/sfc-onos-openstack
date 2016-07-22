@@ -80,8 +80,6 @@ spin
 cp ../ovs_nsh_patches/*.patch ./
 spin
 git am *.patch
-spin
-git clean -x -d -f
 
 spin
 echos "Removing old ovs configuration."
@@ -138,8 +136,6 @@ spin
 ./configure --with-linux=/lib/modules/`uname -r`/build
 spin
 sudo make uninstall
-spin
-git clean -x -d -f
 
 spin
 sudo apt-get install -y build-essential

@@ -27,7 +27,7 @@ externalportname-set -n onos_port2
 ## Install OpenStack
 
 ```
-git clone https://git.openstack.org/openstack-dev/devstack
+git clone https://git.openstack.org/openstack-dev/devstack -b stable/mitaka
 ```
 
 ### configure Openstack
@@ -134,10 +134,10 @@ start q-svc with
 
 ```
 /usr/local/bin/neutron-server \
-	--config-file /etc/neutron/neutron.conf \
-	--config-file /etc/neutron/plugins/ml2/ml2_conf.ini \
-	--config-file /etc/neutron/plugins/ml2/conf_onos.ini \
-	& echo $! >/opt/stack/status/stack/q-svc.pid; fg || echo "q-svc failed to start" | tee "/opt/stack/status/stack/q-svc.failure"
+    --config-file /etc/neutron/neutron.conf \
+    --config-file /etc/neutron/plugins/ml2/ml2_conf.ini \
+    --config-file /etc/neutron/plugins/ml2/conf_onos.ini \
+    & echo $! >/opt/stack/status/stack/q-svc.pid; fg || echo "q-svc failed to start" | tee "/opt/stack/status/stack/q-svc.failure"
 ```
 
 
@@ -204,9 +204,11 @@ rm osKey.pem
 nova keypair-add osKey > osKey.pem
 chmod 600 osKey.pem
 
+openstack flavor create --ram 2048 --disk 15 --vcpus 2 sf.small
+
 nova boot --image ubuntu --flavor m1.small --nic net-name=private  --nic port-id=$(neutron port-list |grep p1 |awk '{print $2}') --key-name osKey SRC
-nova boot --image ubuntu --flavor m1.small --nic net-name=private  --nic port-id=$(neutron port-list |grep p2 |awk '{print $2}') --nic port-id=$(neutron port-list |grep p3 |awk '{print $2}') --key-name osKey SF1
-nova boot --image ubuntu --flavor m1.small --nic net-name=private --nic port-id=$(neutron port-list |grep p4 |awk '{print $2}') --nic port-id=$(neutron port-list |grep p5 |awk '{print $2}') --key-name osKey SF2
+nova boot --image ubuntu --flavor sf.small --nic net-name=private  --nic port-id=$(neutron port-list |grep p2 |awk '{print $2}') --nic port-id=$(neutron port-list |grep p3 |awk '{print $2}') --key-name osKey SF1
+nova boot --image ubuntu --flavor sf.small --nic net-name=private --nic port-id=$(neutron port-list |grep p4 |awk '{print $2}') --nic port-id=$(neutron port-list |grep p5 |awk '{print $2}') --key-name osKey SF2
 nova boot --image ubuntu --flavor m1.small --nic net-name=private --nic port-id=$(neutron port-list |grep p6 |awk '{print $2}') --key-name osKey DST
 ```
 
@@ -214,14 +216,14 @@ nova boot --image ubuntu --flavor m1.small --nic net-name=private --nic port-id=
 remove all security from ports in private network. They will become reachable from outside.
 
 ```
-neutron port-update $(neutron port-list |grep 10.0.0.4 |awk '{print $2}') --no-security-groups 
-neutron port-update $(neutron port-list |grep 10.0.0.5 |awk '{print $2}') --no-security-groups 
-neutron port-update $(neutron port-list |grep 10.0.0.3 |awk '{print $2}') --no-security-groups 
+neutron port-update $(neutron port-list |grep 10.0.0.10 |awk '{print $2}') --no-security-groups 
+neutron port-update $(neutron port-list |grep 10.0.0.12 |awk '{print $2}') --no-security-groups 
+neutron port-update $(neutron port-list |grep 10.0.0.7 |awk '{print $2}') --no-security-groups 
 neutron port-update $(neutron port-list |grep 10.0.0.6 |awk '{print $2}') --no-security-groups 
 
-neutron port-update $(neutron port-list |grep 10.0.0.4 |awk '{print $2}') --port-security-enabled=False 
-neutron port-update $(neutron port-list |grep 10.0.0.5 |awk '{print $2}') --port-security-enabled=False 
-neutron port-update $(neutron port-list |grep 10.0.0.3 |awk '{print $2}') --port-security-enabled=False 
+neutron port-update $(neutron port-list |grep 10.0.0.10 |awk '{print $2}') --port-security-enabled=False 
+neutron port-update $(neutron port-list |grep 10.0.0.12 |awk '{print $2}') --port-security-enabled=False 
+neutron port-update $(neutron port-list |grep 10.0.0.7 |awk '{print $2}') --port-security-enabled=False 
 neutron port-update $(neutron port-list |grep 10.0.0.6 |awk '{print $2}') --port-security-enabled=False 
 ```
 
@@ -269,12 +271,9 @@ sudo dhclient eth2
 ```
 neutron port-pair-create PP1 --ingress p2 --egress p3
 neutron port-pair-create PP2 --ingress p4 --egress p5
-
 neutron port-pair-group-create --port-pair PP1 PPG1
 neutron port-pair-group-create --port-pair PP2 PPG2
-
 neutron flow-classifier-create --source-ip-prefix 10.1.0.3/24 --destination-ip-prefix 10.1.0.8/24 --logical-source-port P1 --logical-destination-port P6 FC1
-
 neutron port-chain-create --port-pair-group PPG1 --port-pair-group PPG2 --flow-classifier FC1 PC1
 ```
 
