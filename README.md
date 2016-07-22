@@ -1,6 +1,6 @@
 #Instructions for creating SFC with ONOS and OpenStack
 
-There is a guide on how to create a SFC.
+There is [a guide (click)](https://github.com/weichweich/sfc-onos-openstack/blob/master/INSTALL_sfc/guide.md) on how to create a SFC.
 
 #DPDK apps
 some useful DPDK apps.
