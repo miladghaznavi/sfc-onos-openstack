@@ -167,12 +167,12 @@ neutron router-interface-add router2 sfcSubNet
 ```
 
 verify that network was created:
-http://<ip_onos>:8181/onos/vtn/networks
+`http://<ip_onos>:8181/onos/vtn/networks`
 
 ### create image
 
 ```
-glance image-create --name ubuntu --disk-format qcow2 --container-format bare --file 
+glance image-create --name ubuntu --disk-format qcow2 --container-format bare --file <path to ubuntu cloud img>
 ```
 
 ### create ports
