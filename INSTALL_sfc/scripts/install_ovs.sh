@@ -146,6 +146,8 @@ sudo apt-get install -y debhelper
 spin
 sudo apt-get install -y autoconf
 spin
+sudo apt-get install -y dh-autoreconf
+spin
 sudo apt-get install -y automake
 spin
 sudo apt-get install -y libssl-dev
