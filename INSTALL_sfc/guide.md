@@ -3,13 +3,18 @@
 ## Install OVS with NSH patch
 
 ```
-chmod +x start-ovs-sh.deb
-./start-ovs-sh.deb
+chmod +x scripts/install_ovs.sh
+./scripts/install_ovs.sh
 ```
 
 ## Install ONOS
 
 Read the onos_install.sh and run it.
+
+```
+chmod +x scripts/install_onos.sh
+./scripts/install_onos.sh
+```
 
 ### Install below features on ONOS
 
@@ -27,7 +32,7 @@ externalportname-set -n onos_port2
 ## Install OpenStack
 
 ```
-git clone https://git.openstack.org/openstack-dev/devstack -b stable/mitaka
+git clone https://git.openstack.org/openstack-dev/devstack
 ```
 
 ### configure Openstack
@@ -92,9 +97,6 @@ onos_ml2 = networking_onos.plugins.ml2.driver:ONOSMechanismDriver
 onos_router = networking_onos.plugins.l3.driver:ONOSL3Plugin
 ```
 
-using sed
-
-
 ### for DNS
 
 in /etc/neutron/dhcp_agent.ini
@@ -105,6 +107,7 @@ dnsmasq_dns_servers = 8.8.8.8, 8.8.4.4
 restart q-dhcp
 
 ### with sed 
+Configure ml2.conf, dhcp_agent.ini, entry_points.txt with sed:
 
 ```
 sed -i 's/mechanism_drivers =.*/mechanism_drivers = onos_ml2/g' /etc/neutron/plugins/ml2/ml2_conf.ini
@@ -115,6 +118,8 @@ sed -i 's/cpu_mode =.*/cpu_mode = host-model/g' /etc/nova/nova.conf
 ```
 
 ### for internet connectivity
+replace `eth1` with the interface which has internet connectivity.
+
 ```
 sudo sysctl net.ipv4.ip_forward=1 
 sudo iptables -A FORWARD -d 172.24.4.0/24 -j ACCEPT 
@@ -130,7 +135,7 @@ screen -x -r stack
 
 ctrl+a+n until q-svc. restart all processes from q-svc to n-cpu.
 
-start q-svc with
+start q-svc with (new conf_onos.ini config-file):
 
 ```
 /usr/local/bin/neutron-server \
