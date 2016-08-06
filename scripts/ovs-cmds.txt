@@ -6,3 +6,4 @@ alle ports:
 gruppen:
 	sudo ovs-ofctl -O openflow13 dump-groups <switch>
 
+

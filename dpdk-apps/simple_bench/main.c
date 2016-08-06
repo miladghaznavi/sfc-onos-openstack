@@ -7,6 +7,7 @@
 #include <execinfo.h>
 #include <unistd.h>
 #include <signal.h>
+#include <stdbool.h>
 
 #include <rte_common.h>
 #include <rte_log.h>
@@ -36,9 +37,18 @@
 #include <rte_ip.h>
 #include <rte_udp.h>
 
+/* requirements for app */
+#define NUMBER_CORES 2
+#define NUMBER_PORTS 2
+
+/* constants */
 #define OK       0
 #define NO_INPUT 1
 #define TOO_LONG 2
+
+/* configuration */
+#define SEND_INTERVAL 50
+#define STAT_UPDATE_INTERVAL 1000
 
 #define RX_RING_SIZE 128
 #define TX_RING_SIZE 512
@@ -46,11 +56,20 @@
 #define NUM_MBUFS 8191
 #define MBUF_CACHE_SIZE 250
 #define BURST_SIZE 32
-#define MAX_MSG_SIZE 512
 
 static const struct rte_eth_conf port_conf_default = {
     .rxmode = { .max_rx_pkt_len = ETHER_MAX_LEN }
 };
+
+/* Per-port statistics struct */
+struct port_statistics {
+    uint64_t tx;
+    uint64_t rx;
+    uint64_t dropped;
+} __rte_cache_aligned;
+struct port_statistics port_statistics[RTE_MAX_ETHPORTS];
+static uint64_t pkts_received = 0;
+static uint64_t sum_rtt = 0;
 
 /* configuration for packet */
 static struct ether_addr src_mac_addr;
@@ -62,6 +81,13 @@ static uint16_t dst_udp_port = 666;
 /* mbuf pool */
 static struct rte_mempool *mbuf_pool;
 static struct rte_mbuf *m_array[1];
+
+/* mask of enabled ports */
+static uint32_t enabled_port_mask = 0;
+
+static uint32_t MIN_PKT_SIZE = sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr) 
+                + sizeof(struct udp_hdr) + sizeof(uint64_t);
+static volatile bool force_quit;
 
 static
 void handler(int sig) {
@@ -88,32 +114,55 @@ print_int32_ip(uint32_t int32) {
     }
 }
 
-static int 
-getLine(const char *prmpt, char *buff, size_t sz) {
-    int ch, extra;
+/* Print out statistics on packets dropped */
+static void
+print_stats(void)
+{
+    uint64_t total_packets_dropped, total_packets_tx, total_packets_rx;
+    unsigned portid;
 
-    // Get line with buffer overrun protection.
-    if (prmpt != NULL) {
-        printf("%s", prmpt);
-        fflush(stdout);
+    total_packets_dropped = 0;
+    total_packets_tx = 0;
+    total_packets_rx = 0;
+
+    const char clr[] = { 27, '[', '2', 'J', '\0' };
+    const char topLeft[] = { 27, '[', '1', ';', '1', 'H','\0' };
+
+        /* Clear screen and move to top left */
+    printf("%s%s", clr, topLeft);
+
+    printf("\nPort statistics ====================================");
+
+    for (portid = 0; portid < RTE_MAX_ETHPORTS; portid++) {
+        /* skip disabled ports */
+        if ((enabled_port_mask & (1 << portid)) == 0)
+            continue;
+        printf("\nStatistics for port %u ------------------------------"
+               "\nPackets sent: %24"PRIu64
+               "\nPackets received: %20"PRIu64
+               "\nPackets dropped: %21"PRIu64,
+               portid,
+               port_statistics[portid].tx,
+               port_statistics[portid].rx,
+               port_statistics[portid].dropped);
+
+        total_packets_dropped += port_statistics[portid].dropped;
+        total_packets_tx += port_statistics[portid].tx;
+        total_packets_rx += port_statistics[portid].rx;
     }
-
-    if (fgets(buff, sz, stdin) == NULL)
-        return NO_INPUT;
-
-    // If it was too long, there'll be no newline. In that case, we flush
-    // to end of line so that excess doesn't affect the next call.
-    if (buff[strlen(buff)-1] != '\n') {
-        extra = 0;
-        while (((ch = getchar()) != '\n') && (ch != EOF))
-            extra = 1;
-        return (extra == 1) ? TOO_LONG : OK;
-    }
-
-    // Otherwise remove newline and give string back to caller.
-    buff[strlen(buff)-1] = '\0';
-    return OK;
+    printf("\nAggregate statistics ==============================="
+           "\nTotal packets sent: %18"PRIu64
+           "\nTotal packets received: %14"PRIu64
+           "\nTotal packets dropped: %15"PRIu64
+           "\nAvg   RTT: %27"PRIu64,
+           total_packets_tx,
+           total_packets_rx,
+           total_packets_dropped,
+           (sum_rtt / pkts_received)
+           );
+    printf("\n====================================================\n");
 }
+
 
 /*
  * Initializes a given port using global settings and with the RX buffers
@@ -209,16 +258,17 @@ send_packet(uint8_t port, char* msg, uint32_t msg_size) {
 
     udp_hdr->dgram_cksum = rte_cpu_to_be_16(rte_ipv4_udptcp_cksum(ip_hdr, (const void *) udp_hdr));
 
-    printf("MSG size: %"PRIu32"\n", msg_size);
-    rte_eth_tx_burst(port, 0, m_array, 1);
+    int sent = rte_eth_tx_burst(port, 0, m_array, 1);
+
+    if (sent)
+        port_statistics[port].tx += sent;
 }
 
 /*
- * The lcore main. This is the main thread that does the work, reading from
- * an input port and writing to an output port.
+ * This lcore sends udp packets containing a timestamp.
  */
-static __attribute__((noreturn)) void
-lcore_main(void)
+static void
+lcore_send_bench(void)
 {
     const uint16_t port = 0;
     /*
@@ -234,35 +284,108 @@ lcore_main(void)
 
     printf("\nCore %u sending packets. [Ctrl+C to quit]\n", rte_lcore_id());
 
-    char msg[MAX_MSG_SIZE];
-    uint32_t state;
+    while(!force_quit) {
+        uint64_t time = rte_get_timer_cycles();
+        send_packet(port, (char*) &time, sizeof(time));
 
-    while(1) {
-        
-        state = getLine("Enter message> ", msg, sizeof(msg));
-
-        if (state == NO_INPUT) {
-            // Extra NL since my system doesn't output that on EOF.
-            printf("\nNo input\n");
-
-        } else if (state == TOO_LONG) {
-            printf("Input too long [max %"PRIu32 "]\n", MAX_MSG_SIZE);
-
-        } else {
-
-            printf("sending: \"%s\" \n", msg);
-            send_packet(port, msg, strlen(msg));
-        } 
+        usleep(SEND_INTERVAL);
     }
+}
 
-    free(msg);
+static uint64_t
+extract_timestamp(struct rte_mbuf *m) {
+    struct ipv4_hdr *ip_hdr;
+    uint64_t* msg_start;
+
+    if (m->data_len < MIN_PKT_SIZE) return 0;
+
+    ip_hdr = rte_pktmbuf_mtod_offset(m, struct ipv4_hdr *, sizeof(struct ether_hdr));
+
+    if (ip_hdr->next_proto_id != IPPROTO_UDP) return 0;
+
+    msg_start =  (uint64_t*) rte_pktmbuf_mtod_offset(m, char*, sizeof(struct ether_hdr) 
+                    + sizeof(struct ipv4_hdr) + sizeof(struct udp_hdr));
+
+    uint64_t timestamp = *msg_start;
+    return timestamp;
+}
+
+/*
+ * This lcore receives udp packets containing a timespamp and saves the secs
+ * between sent and receive.
+ */
+static void
+lcore_receive_bench(void) {
+    const uint16_t port = 1;
+    /*
+     * Check that the port is on the same NUMA node as the polling thread
+     * for best performance.
+     */
+    if (rte_eth_dev_socket_id(port) > 0 &&
+            rte_eth_dev_socket_id(port) != (int)rte_socket_id())
+        printf("WARNING, port %u is on remote NUMA node to "
+                "polling thread.\n\tPerformance will "
+                "not be optimal.\n", port);
+
+    printf("\nCore %u receiving packets. [Ctrl+C to quit]\n", rte_lcore_id());
+
+
+    struct rte_mbuf *pkts_burst[BURST_SIZE];
+    uint64_t last_stat_update = rte_get_timer_cycles();
+    unsigned nb_rx;
+
+    while(!force_quit) {
+        uint64_t time = rte_get_timer_cycles();
+
+        nb_rx = rte_eth_rx_burst((uint8_t) port, 0,
+                        pkts_burst, BURST_SIZE);
+
+        port_statistics[port].rx += nb_rx;
+
+        uint64_t sum_duration = 0;
+        unsigned skiped_pkts = 0;
+        unsigned index;
+        
+        for (index = 0; index < nb_rx; ++index) {
+            uint64_t duration = extract_timestamp(pkts_burst[index]);
+
+            if (duration != 0) {
+                sum_duration += duration;
+            } else {
+                ++skiped_pkts;
+            }
+        }
+
+        if (time - last_stat_update > STAT_UPDATE_INTERVAL) {
+            print_stats();
+            last_stat_update = time;
+        }
+    }
+}
+
+static int
+parse_portmask(const char *portmask)
+{
+    char *end = NULL;
+    unsigned long pm;
+
+    /* parse hexadecimal string */
+    pm = strtoul(portmask, &end, 16);
+    if ((portmask[0] == '\0') || (end == NULL) || (*end != '\0'))
+        return -1;
+
+    if (pm == 0)
+        return -1;
+
+    return pm;
 }
 
 /* display usage */
 static void
-l2fwd_usage(const char *prgname)
+usage(const char *prgname)
 {
     printf("%s [EAL options] --\n"
+            "  -p PORTMASK: hexadecimal bitmask of ports to configure\n"
             "  -m MAC: mac address where packets should be send to\n"
             "  -s IP: source IP\n"
             "  -d IP: destination IP\n"
@@ -271,7 +394,7 @@ l2fwd_usage(const char *prgname)
 }
 
 static uint16_t
-l2fwd_parse_int16(const char *int_str) {
+parse_int16(const char *int_str) {
     char *end = NULL;
     int index = 0;
     printf("%p\n", int_str);
@@ -284,7 +407,7 @@ l2fwd_parse_int16(const char *int_str) {
 }
 
 static void
-l2fwd_parse_ipv4(const char *ip_str, uint8_t *ip) {
+parse_ipv4(const char *ip_str, uint8_t *ip) {
     char *end = NULL;
     const char *start = ip_str;
 
@@ -298,7 +421,7 @@ l2fwd_parse_ipv4(const char *ip_str, uint8_t *ip) {
 }
 
 static void
-l2fwd_parse_mac(const char *mac_str, struct ether_addr *mac) {
+parse_mac(const char *mac_str, struct ether_addr *mac) {
     int index;
     /* parse hexadecimal string */
     for (index = 0; index < ETHER_ADDR_LEN; index++) {
@@ -309,7 +432,7 @@ l2fwd_parse_mac(const char *mac_str, struct ether_addr *mac) {
 
 /* Parse the argument given in the command line of the application */
 static int
-l2fwd_parse_args(int argc, char **argv)
+parse_args(int argc, char **argv)
 {
     int opt, ret;
     char **argvopt;
@@ -321,13 +444,22 @@ l2fwd_parse_args(int argc, char **argv)
 
     argvopt = argv;
 
-    while ((opt = getopt_long(argc, argvopt, "m:s:d:u",
+    while ((opt = getopt_long(argc, argvopt, "p:m:s:d:u",
                   lgopts, &option_index)) != EOF) {
 
         switch (opt) {
+        /* portmask */
+        case 'p':
+            enabled_port_mask = parse_portmask(optarg);
+            if (enabled_port_mask == 0) {
+                printf("invalid portmask\n");
+                usage(prgname);
+                return -1;
+            }
+            break;
         /* destination mac address */
         case 'm':
-            l2fwd_parse_mac(optarg, &dst_mac_addr);
+            parse_mac(optarg, &dst_mac_addr);
 
             printf("dst MAC address: %02X:%02X:%02X:%02X:%02X:%02X\n\n",
                     dst_mac_addr.addr_bytes[0],
@@ -337,34 +469,37 @@ l2fwd_parse_args(int argc, char **argv)
                     dst_mac_addr.addr_bytes[4],
                     dst_mac_addr.addr_bytes[5]);
             break;
+        /* source ip address */
         case 's':
-            l2fwd_parse_ipv4(optarg, (uint8_t*) &src_ip_addr);
+            parse_ipv4(optarg, (uint8_t*) &src_ip_addr);
 
             printf("src IP address: ");
             print_int32_ip(src_ip_addr);
             printf("\n");
             break;
+        /* destination ip address */
         case 'd':
-            l2fwd_parse_ipv4(optarg, (uint8_t*) &dst_ip_addr);
+            parse_ipv4(optarg, (uint8_t*) &dst_ip_addr);
 
             printf("dst IP address: ");
             print_int32_ip(dst_ip_addr);
             printf("\n");
             break;
+        /* destination upd port */
         case 'u':
             printf("start pars udp\n");
-            dst_udp_port = l2fwd_parse_int16(optarg);
+            dst_udp_port = parse_int16(optarg);
 
             printf("UDP port: %d\n", dst_udp_port);
             break;
 
         /* long options */
         case 0:
-            l2fwd_usage(prgname);
+            usage(prgname);
             return -1;
 
         default:
-            l2fwd_usage(prgname);
+            usage(prgname);
             return -1;
         }
     }
@@ -377,6 +512,16 @@ l2fwd_parse_args(int argc, char **argv)
     return ret;
 }
 
+static void
+signal_handler(int signum)
+{
+    if (signum == SIGINT || signum == SIGTERM) {
+        printf("\n\nSignal %d received, preparing to exit...\n",
+                signum);
+        force_quit = true;
+    }
+}
+
 /*
  * The main function, which does initialization and calls the per-lcore
  * functions.
@@ -384,7 +529,10 @@ l2fwd_parse_args(int argc, char **argv)
 int
 main(int argc, char *argv[])
 {
+    force_quit = false;
     signal(SIGSEGV, handler);
+    signal(SIGINT, signal_handler);
+    signal(SIGTERM, signal_handler);
 
     unsigned nb_ports;
     uint8_t portid;
@@ -397,16 +545,16 @@ main(int argc, char *argv[])
     argc -= ret;
     argv += ret;
 
-    ret = l2fwd_parse_args(argc, argv);
+    ret = parse_args(argc, argv);
     if (ret < 0)
-        rte_exit(EXIT_FAILURE, "Invalid L2FWD arguments\n");
+        rte_exit(EXIT_FAILURE, "Invalid SIMPLE_BENCH arguments\n");
 
 
     /* Check that there is an even number of ports to send/receive on. */
     nb_ports = rte_eth_dev_count();
-    if (nb_ports != 1)
-        rte_exit(EXIT_FAILURE, "Error: number of ports must be 1 got: %"PRIu8 "\n",
-            nb_ports);
+    if (nb_ports != NUMBER_CORES)
+        rte_exit(EXIT_FAILURE, "Error: number of ports must be %"PRIu32" got: %"PRIu8 "\n",
+            NUMBER_PORTS, nb_ports);
 
     /* Creates a new mempool in memory to hold the mbufs. */
     mbuf_pool = rte_pktmbuf_pool_create("MBUF_POOL", NUM_MBUFS * nb_ports,
@@ -422,11 +570,54 @@ main(int argc, char *argv[])
         rte_exit(EXIT_FAILURE, "Cannot init port %"PRIu8 "\n",
                 portid);
 
-    if (rte_lcore_count() > 1)
-        printf("\nWARNING: Too many lcores enabled. Only 1 used.\n");
+    if (rte_lcore_count() != NUMBER_CORES)
+        rte_exit(EXIT_FAILURE, "Error: Number of cores must be %"PRIu32".\n", NUMBER_CORES);
 
-    /* Call lcore_main on the master core only. */
-    lcore_main();
+    unsigned last_lcore = rte_lcore_id();
+
+        /* start lcore_receive_bench. */
+    {
+        unsigned receive_lcore_num = rte_get_next_lcore(last_lcore, 0, 1);
+        last_lcore = receive_lcore_num;
+
+        if (receive_lcore_num != RTE_MAX_LCORE) {
+            rte_eal_remote_launch((lcore_function_t *)lcore_receive_bench, 
+                                    NULL, receive_lcore_num);
+        } else {
+            rte_exit(EXIT_FAILURE, "Error2: could not get lcore ID!\n");
+        }        
+    }
+
+        /* start lcore_send_bench. */
+    {
+        unsigned send_lcore_num = rte_get_next_lcore(last_lcore, 0, 1);
+        last_lcore = send_lcore_num;
+    
+        if (send_lcore_num != RTE_MAX_LCORE) {
+            rte_eal_remote_launch((lcore_function_t *)lcore_send_bench, 
+                NULL, send_lcore_num);
+        } else {
+            rte_exit(EXIT_FAILURE, "Error1: could not get lcore ID!\n");
+        }
+    }
+
+    unsigned lcore_id;
+    RTE_LCORE_FOREACH_SLAVE(lcore_id) {
+        if (rte_eal_wait_lcore(lcore_id) < 0) {
+            ret = -1;
+            break;
+        }
+    }
+
+    for (portid = 0; portid < nb_ports; portid++) {
+        if ((enabled_port_mask & (1 << portid)) == 0)
+            continue;
+        printf("Closing port %d...", portid);
+        rte_eth_dev_stop(portid);
+        rte_eth_dev_close(portid);
+        printf(" Done\n");
+    }
+    printf("Bye...\n");
 
     return 0;
 }
