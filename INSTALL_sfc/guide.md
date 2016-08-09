@@ -169,14 +169,12 @@ neutron router-interface-add router2 sfcSubNet
 verify that network was created:
 `http://<ip_onos>:8181/onos/vtn/networks`
 
-### create image
+### create image, ports and VMs
+
 
 ```
 glance image-create --name ubuntu --disk-format qcow2 --container-format bare --file <path to ubuntu cloud img>
-```
 
-### create ports
-```
 neutron port-create --name p1 sfcNet
 neutron port-create --name p2 sfcNet
 neutron port-create --name p3 sfcNet
@@ -185,27 +183,14 @@ neutron port-create --name p5 sfcNet
 neutron port-create --name p6 sfcNet
 neutron port-create --name p7 sfcNet
 
-neutron port-update p1 --no-security-groups
-neutron port-update p2 --no-security-groups
-neutron port-update p3 --no-security-groups
-neutron port-update p4 --no-security-groups
-neutron port-update p5 --no-security-groups
-neutron port-update p6 --no-security-groups
-neutron port-update p7 --no-security-groups
+neutron port-update p1 --no-security-groups --port-security-enabled=False
+neutron port-update p2 --no-security-groups --port-security-enabled=False
+neutron port-update p3 --no-security-groups --port-security-enabled=False
+neutron port-update p4 --no-security-groups --port-security-enabled=False
+neutron port-update p5 --no-security-groups --port-security-enabled=False
+neutron port-update p6 --no-security-groups --port-security-enabled=False
+neutron port-update p7 --no-security-groups --port-security-enabled=False
 
-neutron port-update p1 --port-security-enabled=False
-neutron port-update p2 --port-security-enabled=False
-neutron port-update p3 --port-security-enabled=False
-neutron port-update p4 --port-security-enabled=False
-neutron port-update p5 --port-security-enabled=False
-neutron port-update p6 --port-security-enabled=False
-neutron port-update p7 --port-security-enabled=False
-```
-
-### boot vms, generate keypair
-Remove old keypairs and clear known hosts, create new keypair and boot instances.
-
-```
 #nova keypair-delete osKey
 rm ~/.ssh/known_hosts # think twice about this!
 rm osKey.pem
@@ -214,31 +199,31 @@ chmod 600 osKey.pem
 
 openstack flavor create --ram 2048 --disk 15 --vcpus 2 sf.small
 
-nova boot --image ubuntu --flavor sf.small --nic net-name=private  --nic port-id=$(neutron port-list |grep p1 |awk '{print $2}') --nic port-id=$(neutron port-list |grep p7 |awk '{print $2}') --key-name osKey SRC
-nova boot --image ubuntu --flavor sf.small --nic net-name=private  --nic port-id=$(neutron port-list |grep p2 |awk '{print $2}') --nic port-id=$(neutron port-list |grep p3 |awk '{print $2}') --key-name osKey SF1
-nova boot --image ubuntu --flavor sf.small --nic net-name=private --nic port-id=$(neutron port-list |grep p4 |awk '{print $2}') --nic port-id=$(neutron port-list |grep p5 |awk '{print $2}') --key-name osKey SF2
-nova boot --image ubuntu --flavor sf.small --nic net-name=private --nic port-id=$(neutron port-list |grep p6 |awk '{print $2}') --key-name osKey DST
-```
+nova boot --image ubuntu --flavor m1.small --nic net-name=private \
+          --nic port-id=$(neutron port-list |grep p1 |awk '{print $2}') \
+          --nic port-id=$(neutron port-list |grep p7 |awk '{print $2}') \
+          --key-name osKey SRC
+nova boot --image ubuntu --flavor sf.small --nic net-name=private \
+          --nic port-id=$(neutron port-list |grep p2 |awk '{print $2}') \
+          --nic port-id=$(neutron port-list |grep p3 |awk '{print $2}') \
+          --key-name osKey SF1
+nova boot --image ubuntu --flavor sf.small --nic net-name=private \
+          --nic port-id=$(neutron port-list |grep p4 |awk '{print $2}') \
+          --nic port-id=$(neutron port-list |grep p5 |awk '{print $2}') \
+          --key-name osKey SF2
+nova boot --image ubuntu --flavor m1.small --nic net-name=private \
+          --nic port-id=$(neutron port-list |grep p6 |awk '{print $2}') \
+          --key-name osKey DST
 
-### configure public ports, change IP addresses to IPs in private network
-remove all security from ports in private network. They will become reachable from outside.
+neutron port-update --no-security-groups  --port-security-enabled=False \
+        $(neutron port-list |grep 10.0.0.6 |awk '{print $2}')
+neutron port-update --no-security-groups  --port-security-enabled=False \
+        $(neutron port-list |grep 10.0.0.4 |awk '{print $2}')
+neutron port-update --no-security-groups  --port-security-enabled=False \
+        $(neutron port-list |grep 10.0.0.5 |awk '{print $2}')
+neutron port-update --no-security-groups  --port-security-enabled=False \
+        $(neutron port-list |grep 10.0.0.3 |awk '{print $2}') 
 
-```
-neutron port-update $(neutron port-list |grep 10.0.0.3 |awk '{print $2}') --no-security-groups 
-neutron port-update $(neutron port-list |grep 10.0.0.4 |awk '{print $2}') --no-security-groups 
-neutron port-update $(neutron port-list |grep 10.0.0.5 |awk '{print $2}') --no-security-groups 
-neutron port-update $(neutron port-list |grep 10.0.0.6 |awk '{print $2}') --no-security-groups 
-
-neutron port-update $(neutron port-list |grep 10.0.0.3 |awk '{print $2}') --port-security-enabled=False 
-neutron port-update $(neutron port-list |grep 10.0.0.4 |awk '{print $2}') --port-security-enabled=False 
-neutron port-update $(neutron port-list |grep 10.0.0.5 |awk '{print $2}') --port-security-enabled=False 
-neutron port-update $(neutron port-list |grep 10.0.0.6 |awk '{print $2}') --port-security-enabled=False 
-```
-
-### Floating Address
-you should be able to reach all vms with ssh. Perharps wait a minute or two (or 10...).
-
-```
 nova floating-ip-create public
 nova floating-ip-create public
 nova floating-ip-create public
