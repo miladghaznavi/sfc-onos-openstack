@@ -1,0 +1,33 @@
+[[local|localrc]]
+DEST=/opt/stack 
+#OFFLINE=True 
+
+# Compute settings
+
+HOST_IP=20.0.0.11 # change this per compute node
+FLAT_INTERFACE=eth3
+MULTI_HOST=1
+DATABASE_TYPE=mysql
+SERVICE_HOST=20.0.0.12
+MYSQL_HOST=$SERVICE_HOST
+RABBIT_HOST=$SERVICE_HOST
+GLANCE_HOSTPORT=$SERVICE_HOST:9292
+NOVA_VNC_ENABLED=True
+NOVNCPROXY_URL="http://$SERVICE_HOST:6080/vnc_auto.html"
+VNCSERVER_LISTEN=$HOST_IP
+VNCSERVER_PROXYCLIENT_ADDRESS=$VNCSERVER_LISTEN
+
+# Logging 
+LOGFILE=$DEST/logs/stack.sh.log 
+VERBOSE=True 
+LOG_COLOR=True 
+SCREEN_LOGDIR=$DEST/logs/screen 
+
+# Credentials 
+ADMIN_PASSWORD=openstack 
+MYSQL_PASSWORD=openstack 
+RABBIT_PASSWORD=openstack 
+SERVICE_PASSWORD=openstack 
+SERVICE_TOKEN=tokentoken 
+
+ENABLED_SERVICES=n-cpu,n-api-meta,c-vol,q-agt
