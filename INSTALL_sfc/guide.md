@@ -32,7 +32,7 @@ externalportname-set -n onos_port2
 ## Install OpenStack
 
 ```
-git clone https://git.openstack.org/openstack-dev/devstack
+git clone https://git.openstack.org/openstack-dev/devstack -b stable/mitaka
 ```
 
 ### configure Openstack
