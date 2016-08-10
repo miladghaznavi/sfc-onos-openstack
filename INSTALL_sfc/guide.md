@@ -145,7 +145,11 @@ start q-svc with (new conf_onos.ini config-file):
     & echo $! >/opt/stack/status/stack/q-svc.pid; fg || echo "q-svc failed to start" | tee "/opt/stack/status/stack/q-svc.failure"
 ```
 
+### set ovs manager on compute node
 
+```
+sudo ovs-vsctl set-manager tcp:20.0.0.12:6640
+```
 
 ### enable commandline
 ```
@@ -201,7 +205,6 @@ openstack flavor create --ram 2048 --disk 15 --vcpus 2 sf.small
 
 nova boot --image ubuntu --flavor m1.small --nic net-name=private \
           --nic port-id=$(neutron port-list |grep p1 |awk '{print $2}') \
-          --nic port-id=$(neutron port-list |grep p7 |awk '{print $2}') \
           --key-name osKey SRC
 nova boot --image ubuntu --flavor sf.small --nic net-name=private \
           --nic port-id=$(neutron port-list |grep p2 |awk '{print $2}') \

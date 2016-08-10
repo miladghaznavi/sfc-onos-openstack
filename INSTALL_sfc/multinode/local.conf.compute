@@ -31,3 +31,4 @@ SERVICE_PASSWORD=openstack
 SERVICE_TOKEN=tokentoken 
 
 ENABLED_SERVICES=n-cpu,n-api-meta,c-vol,q-agt
+enable_plugin networking-sfc https://github.com/openstack/networking-sfc

@@ -25,4 +25,3 @@ SERVICE_TOKEN=tokentoken
 #DISABLED_SERVICES=n-net 
 ENABLED_SERVICES+=,q-svc,q-agt,q-dhcp,q-l3,q-meta,neutron
 enable_plugin networking-sfc https://github.com/openstack/networking-sfc
-
