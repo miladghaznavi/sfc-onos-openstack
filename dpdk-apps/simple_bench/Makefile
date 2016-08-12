@@ -42,9 +42,15 @@ include $(RTE_SDK)/mk/rte.vars.mk
 APP = simple_bench
 
 # all source are stored in SRCS-y
-SRCS-y := main.c
+SRCS-y := main.c init.c bench_sender.c parse.c
 
-CFLAGS += -O3
-CFLAGS += $(WERROR_FLAGS)
+CFLAGS += -g
+CFLAGS += -std=gnu99
+#CFLAGS += -O3
+#CFLAGS += $(WERROR_FLAGS)
+CFLAGS += $(CFARGS)
+
+
+LDFLAGS=-lconfig
 
 include $(RTE_SDK)/mk/rte.extapp.mk
