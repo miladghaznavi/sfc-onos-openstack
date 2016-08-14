@@ -42,7 +42,7 @@ include $(RTE_SDK)/mk/rte.vars.mk
 APP = simple_bench
 
 # all source are stored in SRCS-y
-SRCS-y := main.c init.c bench_sender.c parse.c
+SRCS-y := main.c init.c parse.c rxtx.c bench_sender.c bench_receiver.c bench_fwd.c
 
 CFLAGS += -g
 CFLAGS += -std=gnu99

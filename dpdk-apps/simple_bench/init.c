@@ -211,6 +211,163 @@ config_fail(config_t * config) {
 	free(config);
 }
 
+static int
+read_core_config(struct app_config * appconfig, config_t * config, struct core_config * core_configs) {
+
+	if (appconfig->nb_cores != rte_lcore_count()) {
+		RTE_LOG(ERR, CONFIG, "lcore count is unequal to core count in config."
+			    " in config: %"PRIu32" but got: %"PRIu32".\n", appconfig->nb_cores, rte_lcore_count());
+		config_destroy(config);
+		free(config);
+		return 1;
+	}
+	
+	unsigned core_list[appconfig->nb_cores];
+	appconfig->core_configs = core_configs;
+
+	unsigned core = rte_get_master_lcore();
+
+	for (unsigned i = 0; i < appconfig->nb_cores; i++) {
+		core_list[i] = core;
+		rte_eal_wait_lcore(core);
+		
+		core_configs[i].core = core;
+		core_configs[i].nb_bench_sender = 0;
+		core_configs[i].nb_bench_receiver = 0;
+		core_configs[i].nb_bench_forwarder = 0;
+		
+		
+		if (i < appconfig->nb_cores - 1) {
+			core = rte_get_next_lcore(core, 1, 1);
+		}
+	}
+
+	return 0;
+}
+
+static int
+read_bench_sender_config(config_t * config, struct app_config * appconfig) {
+
+	config_setting_t * bench_senders_conf = config_lookup(config, CN_BENCH_SENDERS);
+	appconfig->nb_bench_sender = config_setting_length(bench_senders_conf);
+	struct core_config *core_configs = appconfig->core_configs;
+
+	for (unsigned i = 0; i < appconfig->nb_cores; i++) {
+		core_configs[i].bench_senders = malloc(sizeof(void *) * appconfig->nb_bench_sender);
+	}
+	RTE_LOG(INFO, CONFIG, "Allocate memory for %"PRIu32" sender.\n", appconfig->nb_bench_sender);
+
+	// memory for array of bench sender pointer
+	appconfig->bench_senders = malloc(sizeof(struct bench_sender_t*)
+									 * appconfig->nb_bench_sender);
+
+	for (unsigned i = 0; i < appconfig->nb_bench_sender; ++i) {
+		config_setting_t * bs_conf = config_setting_get_elem(bench_senders_conf, i);
+
+		struct bench_sender_t *bs = malloc(sizeof(struct bench_sender_t));
+		RTE_LOG(INFO, CONFIG, "New sender!\n");
+
+		if (get_bench_sender(bs_conf, appconfig->mempool, bs) != 0) {
+			RTE_LOG(ERR, CONFIG, "Could not set up bench sender.\n");
+			config_destroy(config);
+			free(config);
+			free(bs);
+			free(appconfig->bench_senders);
+			return 1;
+		}
+
+		appconfig->bench_senders[i] = bs;
+
+		// add the new sender to the core and increment the number of sender for this core
+		unsigned bs_i = core_configs[bs->core_id].nb_bench_sender;
+		core_configs[bs->core_id].nb_bench_sender += 1;
+		core_configs[bs->core_id].bench_senders[bs_i] = bs;
+	}
+	return 0;
+}
+
+static int
+read_bench_receiver_config(config_t * config, struct app_config * appconfig) {
+
+	config_setting_t * bench_receivers_conf = config_lookup(config, CN_BENCH_RECEIVERS);
+	appconfig->nb_bench_receiver = config_setting_length(bench_receivers_conf);
+	struct core_config *core_configs = appconfig->core_configs;
+
+	for (unsigned i = 0; i < appconfig->nb_cores; i++) {
+		core_configs[i].bench_receivers = malloc(sizeof(void *) * appconfig->nb_bench_receiver);
+	}
+	RTE_LOG(INFO, CONFIG, "Allocate memory for %"PRIu32" receiver.\n", appconfig->nb_bench_receiver);
+
+	// memory for array of bench receiver pointer
+	appconfig->bench_receivers = malloc(sizeof(struct bench_receiver_t*)
+									 * appconfig->nb_bench_receiver);
+
+	for (unsigned i = 0; i < appconfig->nb_bench_receiver; ++i) {
+		config_setting_t * br_conf = config_setting_get_elem(bench_receivers_conf, i);
+
+		struct bench_receiver_t *br = malloc(sizeof(struct bench_receiver_t));
+		RTE_LOG(INFO, CONFIG, "New receiver!\n");
+
+		if (get_bench_receiver(br_conf, br) != 0) {
+			RTE_LOG(ERR, CONFIG, "Could not set up bench receiver.\n");
+			config_destroy(config);
+			free(config);
+			free(br);
+			free(appconfig->bench_receivers);
+			return 1;
+		}
+
+		appconfig->bench_receivers[i] = br;
+
+		// add the new receiver to the core and increment the number of receiver for this core
+		unsigned br_i = core_configs[br->core_id].nb_bench_receiver;
+		core_configs[br->core_id].nb_bench_receiver += 1;
+		core_configs[br->core_id].bench_receivers[br_i] = br;
+	}
+	return 0;
+}
+
+static int
+read_bench_forwarder_config(config_t * config, struct app_config * appconfig) {
+
+	config_setting_t * bench_forwarders_conf = config_lookup(config, CN_BENCH_FORWARDERS);
+	appconfig->nb_bench_forwarder = config_setting_length(bench_forwarders_conf);
+	struct core_config *core_configs = appconfig->core_configs;
+
+	for (unsigned i = 0; i < appconfig->nb_cores; i++) {
+		core_configs[i].bench_forwarders = malloc(sizeof(void *) * appconfig->nb_bench_forwarder);
+	}
+	RTE_LOG(INFO, CONFIG, "Allocate memory for %"PRIu32" forwarder.\n", appconfig->nb_bench_forwarder);
+
+	// memory for array of bench forwarder pointer
+	appconfig->bench_forwarders = malloc(sizeof(struct bench_forwarder_t*)
+									 * appconfig->nb_bench_forwarder);
+
+	for (unsigned i = 0; i < appconfig->nb_bench_forwarder; ++i) {
+		config_setting_t * bf_conf = config_setting_get_elem(bench_forwarders_conf, i);
+
+		struct bench_forwarder_t *bf = malloc(sizeof(struct bench_forwarder_t));
+		RTE_LOG(INFO, CONFIG, "New forwarder!\n");
+
+		if (get_bench_forwarder(bf_conf, appconfig->mempool, bf) != 0) {
+			RTE_LOG(ERR, CONFIG, "Could not set up bench forwarder.\n");
+			config_destroy(config);
+			free(config);
+			free(bf);
+			free(appconfig->bench_forwarders);
+			return 1;
+		}
+
+		appconfig->bench_forwarders[i] = bf;
+
+		// add the new forwarder to the core and increment the number of forwarder for this core
+		unsigned bf_i = core_configs[bf->core_id].nb_bench_forwarder;
+		core_configs[bf->core_id].nb_bench_forwarder += 1;
+		core_configs[bf->core_id].bench_forwarders[bf_i] = bf;
+	}
+	return 0;
+}
+
 int
 read_config(const char * file, struct app_config * appconfig) {
 	RTE_LOG(INFO, CONFIG, "read config file: %s\n", file);
@@ -226,11 +383,12 @@ read_config(const char * file, struct app_config * appconfig) {
 
 	/*
 	 * Read global configurations:
-	 * core number, enabled ports,
-	 * number of bench senders,
+	 * core number, enabled ports, number of ethernet devices
+	 * init mbuf pool
+	 * initialize ethernet ports
 	 */
-
 	appconfig->nb_ports = rte_eth_dev_count();
+	RTE_LOG(INFO, CONFIG, "Got %"PRIu32" ports.\n", appconfig->nb_ports);
 
 	if (config_lookup_int(config, CN_CORES, &appconfig->nb_cores) != CONFIG_TRUE ||
 		config_lookup_int(config, CN_PORTMASK, &appconfig->enabled_ports) != CONFIG_TRUE) {
@@ -239,11 +397,14 @@ read_config(const char * file, struct app_config * appconfig) {
 		return 1;
 	}
 
+	RTE_LOG(INFO, CONFIG, "Portmask is: %"PRIu32".\n", appconfig->enabled_ports);
+
 	appconfig->mempool = create_pool(MBUF_SIZE);
 
 	for(unsigned i = 0; i < appconfig->nb_ports; ++i) {
 		if ((appconfig->enabled_ports & (1 << i)) == 0) {
 			appconfig->nb_ports--;
+			RTE_LOG(INFO, CONFIG, "Skipp port %"PRIu32".\n", i);
 			continue;
 		}
 		int status = initialize_port(i, appconfig->mempool, 1, 1);
@@ -256,73 +417,46 @@ read_config(const char * file, struct app_config * appconfig) {
 	}
 
 	/*
-	* Core Setup
-	*/
-	
-	if (appconfig->nb_cores != rte_lcore_count()) {
-		RTE_LOG(ERR, CONFIG, "lcore count is unequal to core count in config."
-			    " in config: %"PRIu32" but got: %"PRIu32".\n", appconfig->nb_cores, rte_lcore_count());
-		config_destroy(config);
-		free(config);
+	 * Core Setup
+	 */
+	struct core_config * core_configs = malloc(sizeof(struct core_config) * appconfig->nb_cores);
+	RTE_LOG(INFO, CONFIG, "Malloc(%"PRIu64" * %"PRIu32").\n", sizeof(struct core_config), appconfig->nb_cores);
+	if (read_core_config(appconfig, config, core_configs) != 0) {
+		RTE_LOG(ERR, CONFIG, "Configuration failed: could not read core config.\n");
 		return 1;
 	}
-	
-	unsigned core_list[appconfig->nb_cores];
-	struct core_config * core_configs = malloc(sizeof(struct core_config) * appconfig->nb_cores);
-	appconfig->core_configs = core_configs;
-	unsigned core = rte_get_master_lcore();
-
-	for (unsigned i = 0; i < appconfig->nb_cores; i++) {
-		core_list[i] = core;
-		rte_eal_wait_lcore(core);
-		
-		core_configs[i].core             = core;
-		core_configs[i].bench_send_count = 0;
-		
-		core_configs[i].bench_senders = malloc(sizeof(void *) * appconfig->nb_bench_sender);
-		
-		if (i < appconfig->nb_cores - 1) {
-			core = rte_get_next_lcore(core, 1, 1);
-		}
-	}
-
 
 	/*
 	 * Read configuration of bench sender:
 	 */
-	config_setting_t * bench_senders_conf = config_lookup(config, CN_BENCH_SENDERS);
-	
-	appconfig->nb_bench_sender = config_setting_length(bench_senders_conf);
-
-	// memory for array of bench sender pointer
-	appconfig->bench_senders = malloc(sizeof(struct bench_sender_t*)
-									 * appconfig->nb_bench_sender);
-
-	for (unsigned i = 0; i < appconfig->nb_bench_sender; ++i) {
-		config_setting_t * bs_conf = config_setting_get_elem(bench_senders_conf, i);
-
-		struct bench_sender_t *bs = malloc(sizeof(struct bench_sender_t));
-
-		if (read_send_bench(bs_conf, appconfig->mempool, bs) != 0) {
-			RTE_LOG(ERR, CONFIG, "Could not set up bench sender.\n");
-			config_destroy(config);
-			free(config);
-			free(bs);
-			free(appconfig->bench_senders);
-			return 1;
-		}
-
-		appconfig->bench_senders[i] = bs;
-
-		unsigned bs_i = core_configs[bs->core_id].bench_send_count;
-		core_configs[bs->core_id].bench_send_count += 1;
-		core_configs[bs->core_id].bench_senders[bs_i] = bs;
+	if (read_bench_sender_config(config, appconfig) != 0) {
+		RTE_LOG(ERR, CONFIG, "Configuration failed: could not read bench sender.\n");
+		return 1;
 	}
 
+	/*
+	 * Read configuration of bench receiver:
+	 */
+	if (read_bench_receiver_config(config, appconfig) != 0) {
+		RTE_LOG(ERR, CONFIG, "Configuration failed: could not read bench receiver.\n");
+		return 1;
+	}
+
+	/*
+	 * Read configuration of bench forwarder:
+	 */
+	if (read_bench_forwarder_config(config, appconfig) != 0) {
+		RTE_LOG(ERR, CONFIG, "Configuration failed: could not read bench forwarder.\n");
+		return 1;
+	}
+
+	/*
+	 * Finish the configuration, clear resources, ...
+	 */
 	config_destroy(config);
 	free(config);
 
-	RTE_LOG(INFO, CONFIG, "Configurations read.\n");
+	RTE_LOG(INFO, CONFIG, "Configuration finished.\n");
 	return 0;
 }
 

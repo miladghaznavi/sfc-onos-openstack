@@ -6,6 +6,8 @@
 #define INIT_H_
 
 #include "bench_sender.h"
+#include "bench_receiver.h"
+#include "bench_fwd.h"
 
 #define TRUE 1
 #define FALSE 0
@@ -15,41 +17,40 @@
  * Per core app config
  */
 struct core_config {
-    unsigned core;
+	unsigned core;
 
-    unsigned bench_send_count;
-    struct bench_sender_t ** bench_senders;
+	unsigned nb_bench_sender;
+	struct bench_sender_t **bench_senders;
 
-    // unsigned bench_fwd_count;
-    // struct bench_fwd_t ** bench_fwders;
+	unsigned nb_bench_receiver;
+	struct bench_receiver_t **bench_receivers;
 
-    // unsigned bench_receive_count;
-    // struct bench_receive_t ** bench_receivers;
+	unsigned nb_bench_forwarder;
+	struct bench_forwarder_t **bench_forwarders;
 
-
-    uint64_t nb_polls;
+	uint64_t nb_polls;
 };
 
 /**
  * Global app config
  */
 struct app_config {
-    unsigned nb_ports;
-    unsigned nb_cores;
+	unsigned nb_ports;
+	unsigned nb_cores;
 
-    unsigned enabled_ports;
+	unsigned enabled_ports;
 
-    unsigned nb_bench_sender;
-    // unsigned nb_bench_fwd;
-    // unsigned nb_bench_receive;
+	unsigned nb_bench_sender;
+	unsigned nb_bench_receiver;
+	unsigned nb_bench_forwarder;
 
-    struct rte_mempool       *mempool;
-    struct transmit_t       **tx_port_rings;
-    struct core_config       *core_configs;
+	struct rte_mempool       *mempool;
+	struct transmit_t       **tx_port_rings;
+	struct core_config       *core_configs;
 
-    struct bench_sender_t   **bench_senders;
-    // struct votecounter_t    ** votecounters;
-    // struct wrapper_worker_t ** wrappers;
+	struct bench_sender_t   **bench_senders;
+	struct bench_receiver_t **bench_receivers;
+	struct bench_forwarder_t **bench_forwarders;
 };
 
 /**
@@ -63,7 +64,7 @@ die(void);
 
 int
 initialize_port(uint8_t portid, struct rte_mempool* mempool, 
-                uint16_t rx_queues, uint16_t tx_queues);
+				uint16_t rx_queues, uint16_t tx_queues);
 
 struct rte_mempool *
 create_pool(unsigned size);

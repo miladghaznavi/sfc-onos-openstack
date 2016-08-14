@@ -1,4 +1,3 @@
-
 #ifndef BENCH_SEND_H_
 #define BENCH_SEND_H_
 
@@ -35,13 +34,10 @@ void
 log_bench_sender(struct bench_sender_t * bs);
 
 void
-send_bench_packet(struct bench_sender_t *bench_sender);
-
-void
-bench_send_poll(struct bench_sender_t* bench_sender);
+poll_bench_sender(struct bench_sender_t* bench_sender);
 
 int
-read_send_bench(config_setting_t *bs_conf, 
+get_bench_sender(config_setting_t *bs_conf, 
 				struct rte_mempool *cloned_pool, 
 				struct bench_sender_t * bench_sender);
 
