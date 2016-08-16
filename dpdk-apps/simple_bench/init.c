@@ -249,6 +249,11 @@ static int
 read_bench_sender_config(config_t * config, struct app_config * appconfig) {
 
 	config_setting_t * bench_senders_conf = config_lookup(config, CN_BENCH_SENDERS);
+	if (bench_senders_conf == NULL) {
+		appconfig->nb_bench_sender = 0;
+		RTE_LOG(INFO, CONFIG, "No bench sender.");
+		return 0;
+	}
 	appconfig->nb_bench_sender = config_setting_length(bench_senders_conf);
 	struct core_config *core_configs = appconfig->core_configs;
 
@@ -290,6 +295,12 @@ static int
 read_bench_receiver_config(config_t * config, struct app_config * appconfig) {
 
 	config_setting_t * bench_receivers_conf = config_lookup(config, CN_BENCH_RECEIVERS);
+	if (bench_receivers_conf == NULL) {
+		appconfig->nb_bench_receiver = 0;
+		RTE_LOG(INFO, CONFIG, "No bench receiver.");
+		return 0;
+	}
+
 	appconfig->nb_bench_receiver = config_setting_length(bench_receivers_conf);
 	struct core_config *core_configs = appconfig->core_configs;
 
@@ -331,6 +342,11 @@ static int
 read_bench_forwarder_config(config_t * config, struct app_config * appconfig) {
 
 	config_setting_t * bench_forwarders_conf = config_lookup(config, CN_BENCH_FORWARDERS);
+	if (bench_forwarders_conf == NULL) {
+		appconfig->nb_bench_forwarder = 0;
+		RTE_LOG(INFO, CONFIG, "No bench forwarder.");
+		return 0;
+	}
 	appconfig->nb_bench_forwarder = config_setting_length(bench_forwarders_conf);
 	struct core_config *core_configs = appconfig->core_configs;
 
