@@ -1,0 +1,191 @@
+#include <stdint.h>
+#include <inttypes.h>
+#include <unistd.h>
+#include <getopt.h>
+#include <string.h>
+#include <execinfo.h>
+#include <unistd.h>
+#include <signal.h>
+#include <stdbool.h>
+#include <unistd.h>
+
+#include <rte_common.h>
+#include <rte_malloc.h>
+#include <rte_memory.h>
+#include <rte_memcpy.h>
+#include <rte_memzone.h>
+#include <rte_eal.h>
+#include <rte_per_lcore.h>
+#include <rte_launch.h>
+#include <rte_atomic.h>
+#include <rte_cycles.h>
+#include <rte_prefetch.h>
+#include <rte_lcore.h>
+#include <rte_branch_prediction.h>
+#include <rte_interrupts.h>
+#include <rte_pci.h>
+#include <rte_debug.h>
+#include <rte_ethdev.h>
+#include <rte_ring.h>
+#include <rte_mempool.h>
+#include <rte_mbuf.h>
+#include <rte_log.h>
+#include <rte_errno.h>
+
+#include "init.h"
+
+#define RTE_LOGTYPE_MAIN RTE_LOGTYPE_USER1
+#define RTE_LOGTYPE_STAT RTE_LOGTYPE_USER2
+
+static bool running;
+struct app_config * appconfig;
+
+static
+void handler(int sig) {
+    die();
+}
+
+static void
+signal_handler(int signum) {
+    if (signum == SIGINT || signum == SIGTERM) {
+        RTE_LOG(ERR, MAIN, "\n\nSignal %d received, preparing to exit...\n",
+                signum);
+        running = false;
+    }
+}
+
+static int
+main_loop(void * arg) {
+    struct core_config * c = (struct core_config *) arg;
+
+    while (running) {
+
+        /* Poll bench packet sender. */
+        for (unsigned i = 0; i < c->nb_receiver; i++) {
+            poll_receiver(c->receiver[i]);
+        }
+
+        c->nb_polls++;
+    }
+    return 0;
+}
+
+static void*
+print_stats(void *dummy) {
+
+    while (running) {
+        nanosleep((const struct timespec[]){{2, 0}}, NULL);
+
+        /* Clear screen and move to top left */
+        const char clr[] = { 27, '[', '2', 'J', '\0' };
+        const char topLeft[] = { 27, '[', '1', ';', '1', 'H','\0' };
+        printf("%s%s", clr, topLeft);
+
+
+        for (unsigned i = 0; i < appconfig->nb_receiver; i++) {
+            log_receiver(appconfig->receiver[i]);
+        }
+
+        for (unsigned i = 0; i < appconfig->nb_forwarder; i++) {
+            log_forwarder(appconfig->forwarder[i]);
+        }
+    }
+}
+
+/* display usage */
+static void
+usage(const char *prgname) {
+    printf("Usage: %s [EAL options] -- <config file>\n", prgname);
+}
+
+/*
+ * Free allocated memory and close ports.
+ */
+static void
+tear_down(struct app_config *app_config) {
+    const unsigned nb_ports = app_config->nb_ports;
+    const unsigned enabled_port_mask = app_config->enabled_ports;
+
+    for (unsigned portid = 0; portid < nb_ports; portid++) {
+        if ((enabled_port_mask & (1 << portid)) == 0)
+            continue;
+        RTE_LOG(INFO, MAIN, "Closing port %d...", portid);
+        rte_eth_dev_stop(portid);
+        rte_eth_dev_close(portid);
+        printf(" Done\n");
+    }
+
+    free(app_config);
+}
+
+/*
+ * The main function, which does initialization and calls the per-lcore
+ * functions.
+ */
+int
+main(int argc, char *argv[]) {
+    running = true;
+    signal(SIGSEGV, handler);
+    signal(SIGINT, signal_handler);
+    signal(SIGTERM, signal_handler);
+
+    rte_openlog_stream(NULL);
+
+    /* Initialize the Environment Abstraction Layer (EAL). */
+    int args_used = rte_eal_init(argc, argv);
+    if (args_used < 0)
+        rte_exit(EXIT_FAILURE, "Error with EAL initialization\n");
+
+    argc -= args_used;
+    argv += args_used;
+
+    if (argc != 2) {
+        // we need a config file!
+        usage(argv[0]);
+        return 0;
+    }
+
+    /* Get the desired configuration */
+    appconfig = malloc(sizeof(struct app_config));
+    if (read_config(argv[1], appconfig) != 0)
+        rte_exit(EXIT_FAILURE, "Configuration failed.\n");
+
+
+    /* run main loop on worker cores */
+    for (unsigned i = 1; i < appconfig->nb_cores; i++) {
+        RTE_LOG(INFO, MAIN, "Start Core: %"PRIu32".\n", appconfig->core_configs[i].core);
+        rte_eal_remote_launch(main_loop, &appconfig->core_configs[i], appconfig->core_configs[i].core);
+    }
+    
+    // RTE_LOG(INFO, MAIN, "Start stat thread.\n");
+    pthread_t stat;
+    pthread_create(&stat, NULL, print_stats, NULL);
+
+    /* run main loop on master core */
+    RTE_LOG(INFO, MAIN, "Start main loop on master core.\n");
+
+    main_loop(&appconfig->core_configs[0]);
+
+    RTE_LOG(INFO, MAIN, "Stopping...\n");
+    RTE_LOG(INFO, MAIN, "Waiting for Core");
+    /* wait for all worker to finish */
+    int exit_code = 0;
+    int core_id;
+    RTE_LCORE_FOREACH_SLAVE(core_id) {
+        if (rte_eal_wait_lcore(core_id) < 0) {
+            exit_code = -1;
+            break;
+        } else {
+            printf(" %"PRIu32, core_id);
+        }
+    }
+    RTE_LOG(INFO, MAIN, " done.\n");
+
+    print_stats(NULL);
+
+    /* free all used memory space and exit */
+    tear_down(appconfig);
+    RTE_LOG(INFO, MAIN, "Bye...\n");
+
+    return exit_code;
+}
