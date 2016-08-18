@@ -59,10 +59,12 @@ main_loop(void * arg) {
     struct core_config * c = (struct core_config *) arg;
 
     while (running) {
-
-        /* Poll bench packet sender. */
         for (unsigned i = 0; i < c->nb_receiver; i++) {
             poll_receiver(c->receiver[i]);
+        }
+
+        for (unsigned i = 0; i < c->nb_counter; i++) {
+            poll_counter(c->counter[i]);
         }
 
         c->nb_polls++;
@@ -88,6 +90,10 @@ print_stats(void *dummy) {
 
         for (unsigned i = 0; i < appconfig->nb_forwarder; i++) {
             log_forwarder(appconfig->forwarder[i]);
+        }
+
+        for (unsigned i = 0; i < appconfig->nb_counter; i++) {
+            log_counter(appconfig->counter[i]);
         }
     }
 }

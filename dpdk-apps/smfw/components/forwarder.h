@@ -33,7 +33,7 @@ void
 log_forwarder(struct forwarder_t *forwarder);
 
 void
-forwarder_receive_pkt(void* arg, struct rte_mbuf *m);
+forwarder_receive_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx);
 
 int
 get_forwarder(config_setting_t *f_conf,

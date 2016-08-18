@@ -15,7 +15,7 @@ struct receiver_t {
 
     unsigned nb_handler;
     void **args;
-    void (**handler) (void *arg, struct rte_mbuf *m);
+    void (**handler) (void *arg, struct rte_mbuf **m, int nb_rx);
 };
 
 void

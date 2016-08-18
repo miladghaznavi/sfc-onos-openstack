@@ -12,6 +12,7 @@
 
 #include "components/forwarder.h"
 #include "components/receiver.h"
+#include "components/counter.h"
 
 #define TRUE 1
 #define FALSE 0
@@ -26,6 +27,9 @@ struct core_config {
 
 	unsigned nb_receiver;
 	struct receiver_t **receiver;
+
+	unsigned nb_counter;
+	struct counter_t **counter;
 };
 
 /**
@@ -48,6 +52,9 @@ struct app_config {
 
 	unsigned nb_forwarder;
 	struct forwarder_t **forwarder;
+
+	unsigned nb_counter;
+	struct counter_t **counter;
 };
 
 /**

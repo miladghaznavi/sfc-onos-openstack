@@ -23,6 +23,7 @@
 
 #define RTE_LOGTYPE_CONFIG RTE_LOGTYPE_USER1
 #define RTE_LOGTYPE_PORT_INIT RTE_LOGTYPE_USER2
+#define RTE_LOGTYPE_MEM_INIT RTE_LOGTYPE_USER3
 
 
 #define libconfig_int int
@@ -32,8 +33,6 @@
 */
 #define RTE_TEST_RX_DESC_DEFAULT 128
 #define RTE_TEST_TX_DESC_DEFAULT 512
-
-#define MBUF_SIZE 2000
 
 static uint16_t nb_rxd = RTE_TEST_RX_DESC_DEFAULT;
 static uint16_t nb_txd = RTE_TEST_TX_DESC_DEFAULT;
@@ -136,11 +135,10 @@ create_pool(unsigned size) {
 	char name[128];
 	sprintf(name, "mbuf_pool_%i", rand());
 	
-	struct rte_mempool * pktmbuf_pool =
-	rte_pktmbuf_pool_create(name, size, 32,
-				0, MBUF_SIZE, rte_socket_id());
+	struct rte_mempool *pktmbuf_pool = rte_pktmbuf_pool_create(name, size, 32,
+										0, size, rte_socket_id());
 	if (pktmbuf_pool == NULL) {
-		printf("Mempool Creation Failed. Enough memory?\n");
+		RTE_LOG(INFO, MEM_INIT, "Mempool Creation Failed. Enough memory?\n");
 		die();
 	}
 	return pktmbuf_pool;
@@ -245,10 +243,10 @@ read_core_config(struct app_config * appconfig, config_t * config, struct core_c
 }
 
 static int
-read_forwarder_config(config_t * config, struct app_config * appconfig) {
+read_forwarder_config(config_t *config, struct app_config *appconfig) {
 
 	// get and check config
-	config_setting_t * forwarders_conf = config_lookup(config, CN_FORWARDERS);
+	config_setting_t *forwarders_conf = config_lookup(config, CN_FORWARDERS);
 	if (forwarders_conf == NULL) {
 		appconfig->nb_forwarder = 0;
 		RTE_LOG(INFO, CONFIG, "No forwarder.");
@@ -280,6 +278,63 @@ read_forwarder_config(config_t * config, struct app_config * appconfig) {
 		}
 
 		appconfig->forwarder[i] = forwarder;
+	}
+	return 0;
+}
+
+static int
+read_counter_config(config_t *config, struct app_config *appconfig) {
+
+	// get and check config
+	config_setting_t *counters_conf = config_lookup(config, CN_COUNTER);
+	if (counters_conf == NULL) {
+		appconfig->nb_counter = 0;
+		RTE_LOG(INFO, CONFIG, "No counter.");
+		return 0;
+	}
+
+	// get number of configured counter and allocate memory for a pointer array in app_config
+	appconfig->nb_counter = config_setting_length(counters_conf);
+	RTE_LOG(INFO, CONFIG, "Allocate memory for %"PRIu32" counter.\n", appconfig->nb_counter);
+
+	// memory for array of counter pointer
+	appconfig->counter = malloc(sizeof(struct counter_t*)
+									 * appconfig->nb_counter);
+
+	// memory for core config
+	struct core_config *core_configs = appconfig->core_configs;
+	for (unsigned i = 0; i < appconfig->nb_cores; i++) {
+		core_configs[i].counter = malloc(sizeof(void *) * appconfig->nb_counter);
+		core_configs[i].nb_counter = 0;
+	}
+
+
+	// init counter and add it to the counter array in app_config
+	for (unsigned i = 0; i < appconfig->nb_counter; ++i) {
+		config_setting_t * f_conf = config_setting_get_elem(counters_conf, i);
+
+		struct counter_t *counter = malloc(sizeof(struct counter_t));
+		RTE_LOG(INFO, CONFIG, "New counter!\n");
+
+		if (get_counter(f_conf, appconfig, counter) != 0) {
+			RTE_LOG(ERR, CONFIG, "Could not set up counter.\n");
+			free(counter);
+			free(appconfig->counter);
+			return 1;
+		}
+		if (counter->core_id >= appconfig->nb_cores) {
+			RTE_LOG(ERR, CONFIG, "Core ID is %"PRIu32" but got only %"PRIu32" cores.\n",
+					 counter->core_id, appconfig->nb_cores);
+			free(counter);
+			free(appconfig->counter);
+			return 1;
+		}
+
+		appconfig->counter[i] = counter;
+
+		unsigned counter_i = core_configs[counter->core_id].nb_counter;
+		core_configs[counter->core_id].nb_counter += 1;
+		core_configs[counter->core_id].counter[counter_i] = counter;
 	}
 	return 0;
 }
@@ -319,7 +374,12 @@ read_config(const char * file, struct app_config * appconfig) {
 
 	RTE_LOG(INFO, CONFIG, "Portmask is: %"PRIu32".\n", appconfig->enabled_ports);
 
-	appconfig->mempool = create_pool(MBUF_SIZE);
+	unsigned pool_size;
+	if (config_lookup_int(config, CN_LOG_POOL_SIZE, &pool_size) != CONFIG_TRUE) {
+		RTE_LOG(ERR, CONFIG, "Could not read %s.\n", CN_LOG_POOL_SIZE);
+		return 1;
+	}
+	appconfig->mempool = create_pool(1 << pool_size - 1);
 
 	for(unsigned i = 0; i < appconfig->nb_ports; ++i) {
 		if ((appconfig->enabled_ports & (1 << i)) == 0) {
@@ -347,6 +407,7 @@ read_config(const char * file, struct app_config * appconfig) {
 	for (unsigned i = 0; i < appconfig->nb_cores; ++i) {
 		core_configs[i].receiver = malloc(sizeof(void *) * appconfig->nb_ports);
 		core_configs[i].nb_receiver = 0;
+
 	}
 
 	/*
@@ -390,9 +451,19 @@ read_config(const char * file, struct app_config * appconfig) {
 		return 1;
 	}
 
+	/*
+	 * Read configuration of counter:
+	 */
+	if (read_counter_config(config, appconfig) != 0) {
+		RTE_LOG(ERR, CONFIG, "Configuration failed: could not read forwarder.\n");
+		config_destroy(config);
+		free(config);
+		return 1;
+	}
+
 	/* Link receiver to componentes */
 
-	unsigned nb_receiving_comp = appconfig->nb_forwarder;
+	unsigned nb_receiving_comp = appconfig->nb_forwarder + appconfig->nb_counter;
 
 	for (int receiver_i = 0; receiver_i < appconfig->nb_receiver; ++receiver_i) {
 		RTE_LOG(INFO, CONFIG, "Link receiver %"PRIu32"/%"PRIu32".\n", receiver_i, appconfig->nb_receiver);
@@ -418,6 +489,23 @@ read_config(const char * file, struct app_config * appconfig) {
 			++comp_i;
 		}
 
+		/* Link counter */
+		for (int cntr_i = 0; cntr_i < appconfig->nb_forwarder; ++cntr_i) {
+			struct counter_t * cntr = appconfig->counter[cntr_i];
+			// pointing to the same receiver!?
+			if (cntr->rx_register == receiver) {
+				receiver->args[comp_i] = cntr;
+				receiver->handler[comp_i] = counter_register_pkt;
+				receiver->nb_handler += 1;
+				comp_i += 1;
+			}
+			if (cntr->rx_firewall == receiver) {
+				receiver->args[comp_i] = cntr;
+				receiver->handler[comp_i] = counter_firewall_pkt;
+				receiver->nb_handler += 1;
+				comp_i += 1;
+			}
+		}
 	}
 	/*
 	 * Finish the configuration, clear resources, ...

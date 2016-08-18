@@ -21,7 +21,6 @@ log_receiver(struct receiver_t *receiver) {
 
 void
 poll_receiver(struct receiver_t *receiver) {
-
     const uint16_t port = receiver->in_port;
     struct rte_mbuf *pkts_burst[BURST_SIZE];
 
@@ -30,15 +29,12 @@ poll_receiver(struct receiver_t *receiver) {
 
     receiver->pkts_received += nb_rx;
 
+    for (unsigned h_index = 0; h_index < receiver->nb_handler; ++h_index) {
+        /* handover packet to handler. */
+        receiver->handler[h_index](receiver->args[h_index], pkts_burst, nb_rx);
+    }
     for (unsigned p_index = 0; p_index < nb_rx; ++p_index) {
-        struct rte_mbuf *m = pkts_burst[p_index];
-        
-        /* hand packet over to handler. */
-        for (unsigned h_index = 0; h_index < receiver->nb_handler; h_index++) {
-            receiver->handler[h_index](receiver->args[h_index], m);
-        }
-
-        rte_pktmbuf_free(m);
+        rte_pktmbuf_free(pkts_burst[p_index]);
     }
 }
 

@@ -42,7 +42,7 @@ include $(RTE_SDK)/mk/rte.vars.mk
 APP = smfw
 
 # all source are stored in SRCS-y
-SRCS-y := main.c init.c parse.c rxtx.c components/forwarder.c components/receiver.c components/counter.c
+SRCS-y := main.c init.c parse.c rxtx.c indextable.c components/forwarder.c components/receiver.c components/counter.c
 
 CFLAGS += -g
 CFLAGS += -std=gnu99

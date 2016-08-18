@@ -16,33 +16,40 @@
 
 
 void
-forwarder_receive_pkt(void *arg, struct rte_mbuf *m) {
+forwarder_receive_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 	struct forwarder_t *forwarder = (struct forwarder_t *) arg;
-	forwarder->pkts_received += 1;
+	forwarder->pkts_received += nb_rx;
 
-	struct ether_hdr *eth_old = rte_pktmbuf_mtod(m, struct ether_hdr *);
+	struct rte_mbuf *bulk[nb_rx];
+	unsigned nb_tx = 0;
 
-	/* forwarde packet only if it was send to our MAC. */
-	if (!is_same_ether_addr(&forwarder->receive_port_mac, &eth_old->d_addr)) {
-		forwarder->pkts_dropped += 1;
-		return;
+	for (unsigned pkt_i = 0; pkt_i < nb_rx; ++pkt_i) {
+		struct ether_hdr *eth_old = rte_pktmbuf_mtod(buffer[pkt_i], struct ether_hdr *);
+	
+		/* forwarde packet only if it was send to our MAC. */
+		if (!is_same_ether_addr(&forwarder->receive_port_mac, &eth_old->d_addr)) {
+			forwarder->pkts_dropped += 1;
+			continue;
+		}
+	
+		/* Clone the mbuf. */
+		struct rte_mbuf *m_clone = rte_pktmbuf_clone(buffer[pkt_i], forwarder->pool);
+	
+		if (m_clone == NULL) {
+			RTE_LOG(ERR, FORWARDER, "Could not clone packet! Mempool empty?\n");
+			forwarder->pkts_dropped += 1;
+			continue;
+		}
+	
+		struct ether_hdr *eth = rte_pktmbuf_mtod(m_clone, struct ether_hdr *);
+	
+		ether_addr_copy(&forwarder->send_port_mac, &eth->s_addr);
+		ether_addr_copy(&forwarder->dst_mac, &eth->d_addr);
+
+		bulk[nb_tx] = m_clone;
+		nb_tx += 1;
 	}
-
-	/* Clone the mbuf. */
-	struct rte_mbuf *m_clone = rte_pktmbuf_clone(m, forwarder->pool);
-
-	if (m_clone == NULL) {
-		RTE_LOG(ERR, FORWARDER, "Could not clone packet! Mempool empty?\n");
-		forwarder->pkts_dropped += 1;
-		return;
-	}
-
-	struct ether_hdr *eth = rte_pktmbuf_mtod(m_clone, struct ether_hdr *);
-
-	ether_addr_copy(&forwarder->send_port_mac, &eth->s_addr);
-	ether_addr_copy(&forwarder->dst_mac, &eth->d_addr);
-
-	int send = tx_put(forwarder->tx, m_clone);
+	int send = tx_put(forwarder->tx, bulk, nb_tx);
 	forwarder->pkts_send += send;
 }
 

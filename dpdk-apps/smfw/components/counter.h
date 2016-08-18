@@ -17,24 +17,29 @@ struct counter_t {
 
 	unsigned core_id;
 	
+	unsigned chain_index;
 	unsigned drop_at;
 	bool encap_on_register;
+	bool decap_on_send;
 
-	struct ether_addr send_src_mac;
-	struct ether_addr dst_mac;
+	struct ether_addr send_port_mac;
+	struct ether_addr next_mac;
 
 	struct rte_ring *ring;
 	struct rte_mempool *pool;
+	struct indextable *indextable;
 
-	uint64_t pkts_received;
+	uint64_t pkts_received_fw;
+	uint64_t pkts_received_r;
 	uint64_t pkts_send;
+	uint64_t pkts_dropped;
 };
 
 void
-counter_register_pkt(void *arg, struct rte_mbuf *m);
+counter_register_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx);
 
 void
-counter_firewall_pkt(void *arg, struct rte_mbuf *m);
+counter_firewall_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx);
 
 void
 log_counter(struct counter_t *counter);
@@ -43,7 +48,7 @@ void
 poll_counter(struct counter_t *counter);
 
 int
-init_counter(config_setting_t *c_conf,
+get_counter(config_setting_t *c_conf,
 			struct app_config *appconfig, 
 			struct counter_t *counter);
 
