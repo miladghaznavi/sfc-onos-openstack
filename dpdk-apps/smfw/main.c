@@ -63,9 +63,9 @@ main_loop(void * arg) {
             poll_receiver(c->receiver[i]);
         }
 
-        for (unsigned i = 0; i < c->nb_counter; i++) {
-            poll_counter(c->counter[i]);
-        }
+        // for (unsigned i = 0; i < c->nb_counter; i++) {
+        //     poll_counter(c->counter[i]);
+        // }
 
         c->nb_polls++;
     }

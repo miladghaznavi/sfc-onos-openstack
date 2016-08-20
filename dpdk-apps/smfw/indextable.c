@@ -21,11 +21,10 @@
  */
 static inline unsigned
 indextable_hash(struct indextable *this, struct rte_mbuf *packet) {
-	uint8_t *data = rte_pktmbuf_mtod(packet, uint8_t *);
-	if (likely(packet->data_len > 2* sizeof(struct ether_addr))) {
-		// Strip ethernet header for calculation because it will change through
-		// the firewalls
-		data = data + 2* sizeof(struct ether_addr);
+
+	// Strip ethernet adresses for calculation because it will change through
+	// the firewalls
+	uint8_t *data = rte_pktmbuf_mtod_offset(packet, uint8_t *, 2* sizeof(struct ether_addr));
 
 #if HASH_FUNC == HASH_JHASH
 		return (rte_jhash(data, packet->data_len - 2* sizeof(struct ether_addr), 0xFFFFFFFF));
@@ -34,11 +33,6 @@ indextable_hash(struct indextable *this, struct rte_mbuf *packet) {
 #if HASH_FUNC == HASH_CRC32
 		return (rte_hash_crc(data, packet->data_len - 2* sizeof(struct ether_addr), 0));
 #endif
-
-	} else {
-		// Invalid, dont store!
-		return INDEXTABLE_INVALID_INDEX;
-	}
 }
 
 /**
@@ -182,11 +176,10 @@ indextable_put(struct indextable *this, struct rte_mbuf *packet) {
 	}
 
 	// Set the values of the new entry.
-	entry->packet               = packet;
-	entry->received             = 0;
-	entry->forwarding_decisions = 0;
-	entry->received_time        = rte_get_tsc_cycles();
-	entry->hash_crc             = hash_crc;
+	entry->packet           = packet;
+	entry->received         = 0;
+	entry->received_time    = rte_get_tsc_cycles();
+	entry->hash_crc         = hash_crc;
 
 	// Increase the reference counter to prevent the packet being freed when sent.
 	// It needs to be freed in the delete_index_table_entry()-function.

@@ -5,6 +5,7 @@
 
 #include <inttypes.h>
 #include <libconfig.h>
+#include <stdbool.h>
 
 #include <rte_mempool.h>
 #include <rte_mbuf.h>
@@ -21,6 +22,8 @@ struct forwarder_t {
 	struct ether_addr receive_port_mac;
 	struct ether_addr send_port_mac;
 	struct ether_addr dst_mac;
+
+	bool decap_on_send;
 
 	uint64_t pkts_received;
 	uint64_t pkts_send;

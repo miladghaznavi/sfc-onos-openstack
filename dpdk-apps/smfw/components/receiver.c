@@ -1,10 +1,12 @@
 #include "receiver.h"
 
 #include "../config.h"
+#include "../parse.h"
 
 #include <libconfig.h>
 
 #include <rte_log.h>
+#include <rte_ether.h>
 
 #define BURST_SIZE 32
 
@@ -15,6 +17,7 @@ log_receiver(struct receiver_t *receiver) {
     RTE_LOG(INFO, RECEIVER, "------------- Receiver -------------\n");
     RTE_LOG(INFO, RECEIVER, "| Core ID:          %"PRIu32"\n", receiver->core_id);
     RTE_LOG(INFO, RECEIVER, "| In port:          %"PRIu32"\n", receiver->in_port);
+    RTE_LOG(INFO, RECEIVER, "| MAC:              "FORMAT_MAC"\n", ARG_V_MAC(receiver->mac));
     RTE_LOG(INFO, RECEIVER, "| Packets received: %"PRIu64"\n", receiver->pkts_received);
     RTE_LOG(INFO, RECEIVER, "------------------------------------\n");
 }
@@ -47,4 +50,6 @@ init_receiver(unsigned core_id, unsigned in_port,
 
     receiver->nb_handler = 0;
     receiver->pkts_received = 0;
+
+    rte_eth_macaddr_get(receiver->in_port, &receiver->mac);
 }

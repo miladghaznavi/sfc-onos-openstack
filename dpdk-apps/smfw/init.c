@@ -131,14 +131,14 @@ check_all_ports_link_status(uint8_t port_num, uint32_t port_mask)
 
 struct rte_mempool *
 create_pool(unsigned size) {
-	
+	RTE_LOG(INFO, MEM_INIT, "Create mempool %"PRIu32"\n", size);
 	char name[128];
 	sprintf(name, "mbuf_pool_%i", rand());
 	
 	struct rte_mempool *pktmbuf_pool = rte_pktmbuf_pool_create(name, size, 32,
 										0, size, rte_socket_id());
 	if (pktmbuf_pool == NULL) {
-		RTE_LOG(INFO, MEM_INIT, "Mempool Creation Failed. Enough memory?\n");
+		RTE_LOG(ERR, MEM_INIT, "Mempool Creation Failed. Enough memory?\n");
 		die();
 	}
 	return pktmbuf_pool;
@@ -189,7 +189,7 @@ initialize_port(uint8_t portid, struct rte_mempool* mempool, uint16_t rx_queues,
 		return 1;
 	}
 	
-	rte_eth_promiscuous_enable(portid);
+	// rte_eth_promiscuous_enable(portid);
 	
 	RTE_LOG(INFO, PORT_INIT, "OK, MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
 		ports_eth_addr[portid].addr_bytes[0],
@@ -285,11 +285,16 @@ read_forwarder_config(config_t *config, struct app_config *appconfig) {
 static int
 read_counter_config(config_t *config, struct app_config *appconfig) {
 
+	struct core_config *core_configs = appconfig->core_configs;
+
 	// get and check config
 	config_setting_t *counters_conf = config_lookup(config, CN_COUNTER);
 	if (counters_conf == NULL) {
+		for (unsigned i = 0; i < appconfig->nb_cores; i++) {
+			core_configs[i].nb_counter = 0;
+		}
 		appconfig->nb_counter = 0;
-		RTE_LOG(INFO, CONFIG, "No counter.");
+		RTE_LOG(INFO, CONFIG, "No counter.\n");
 		return 0;
 	}
 
@@ -302,7 +307,6 @@ read_counter_config(config_t *config, struct app_config *appconfig) {
 									 * appconfig->nb_counter);
 
 	// memory for core config
-	struct core_config *core_configs = appconfig->core_configs;
 	for (unsigned i = 0; i < appconfig->nb_cores; i++) {
 		core_configs[i].counter = malloc(sizeof(void *) * appconfig->nb_counter);
 		core_configs[i].nb_counter = 0;
@@ -379,7 +383,7 @@ read_config(const char * file, struct app_config * appconfig) {
 		RTE_LOG(ERR, CONFIG, "Could not read %s.\n", CN_LOG_POOL_SIZE);
 		return 1;
 	}
-	appconfig->mempool = create_pool(1 << pool_size - 1);
+	appconfig->mempool = create_pool((1 << pool_size) - 1);
 
 	for(unsigned i = 0; i < appconfig->nb_ports; ++i) {
 		if ((appconfig->enabled_ports & (1 << i)) == 0) {
@@ -490,7 +494,7 @@ read_config(const char * file, struct app_config * appconfig) {
 		}
 
 		/* Link counter */
-		for (int cntr_i = 0; cntr_i < appconfig->nb_forwarder; ++cntr_i) {
+		for (int cntr_i = 0; cntr_i < appconfig->nb_counter; ++cntr_i) {
 			struct counter_t * cntr = appconfig->counter[cntr_i];
 			// pointing to the same receiver!?
 			if (cntr->rx_register == receiver) {

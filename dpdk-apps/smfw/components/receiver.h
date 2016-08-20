@@ -10,6 +10,7 @@
 struct receiver_t {
     unsigned core_id;
     unsigned in_port;
+    struct ether_addr mac;
 
     uint64_t pkts_received;
 

@@ -1,10 +1,15 @@
 #include "parse.h"
 
+#include "components/wrapping.h"
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <inttypes.h>
 
+#include <rte_ip.h>
 #include <rte_ether.h>
+
+#define RTE_LOGTYPE_PARSER RTE_LOGTYPE_USER1
 
 int
 parse_mac(const char *mac_str, struct ether_addr *mac) {
@@ -44,4 +49,22 @@ parse_ip(const char *ips, uint32_t* ip) {
     }
     
     return 0;
+}
+
+void
+print_packet(struct rte_mbuf* m, int has_meta) {
+    struct ether_hdr *eth = rte_pktmbuf_mtod(m, struct ether_hdr *);
+    struct ipv4_hdr *ip = rte_pktmbuf_mtod_offset(m, struct ipv4_hdr *, sizeof(struct ether_hdr));
+
+    RTE_LOG(INFO, PARSER, "--------------------------\n");
+    RTE_LOG(INFO, PARSER, "| "FORMAT_MAC" | "FORMAT_MAC" |\n", ARG_V_MAC(eth->s_addr), ARG_V_MAC(eth->d_addr));
+    RTE_LOG(INFO, PARSER, "| %"PRIu16" |\n", eth->ether_type);
+    RTE_LOG(INFO, PARSER, "| %"PRIu8" | %"PRIu8" | %"PRIu16" |\n", ip->version_ihl,ip->type_of_service,ip->total_length); 
+    RTE_LOG(INFO, PARSER, "| %"PRIu16" | %"PRIu16" |\n", ip->packet_id, ip->fragment_offset);
+    RTE_LOG(INFO, PARSER, "| %"PRIu8" | %"PRIu8" | %"PRIu16"\n", ip->time_to_live, ip->next_proto_id, ip->hdr_checksum); 
+    RTE_LOG(INFO, PARSER, "| "FORMAT_IP" |\n", ARG_V_IP(ip->src_addr));
+    RTE_LOG(INFO, PARSER, "| "FORMAT_IP" |\n", ARG_V_IP(ip->dst_addr));
+    if (has_meta == 1) RTE_LOG(INFO, PARSER, "| %"PRIu64" |\n", wrapper_get_data(m)->decissions);
+    RTE_LOG(INFO, PARSER, "--------------------------\n");
+
 }

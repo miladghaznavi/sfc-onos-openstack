@@ -4,6 +4,7 @@
 #include "../rxtx.h"
 #include "../parse.h"
 #include "../init.h"
+#include "wrapping.h"
 
 #include <stdlib.h>
 
@@ -17,6 +18,7 @@
 
 void
 forwarder_receive_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
+	if (nb_rx == 0) return;
 	struct forwarder_t *forwarder = (struct forwarder_t *) arg;
 	forwarder->pkts_received += nb_rx;
 
@@ -28,7 +30,9 @@ forwarder_receive_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 	
 		/* forwarde packet only if it was send to our MAC. */
 		if (!is_same_ether_addr(&forwarder->receive_port_mac, &eth_old->d_addr)) {
+			RTE_LOG(INFO, FORWARDER, "Wrong d_MAC... "FORMAT_MAC"\n", ARG_V_MAC(eth_old->d_addr));
 			forwarder->pkts_dropped += 1;
+			rte_pktmbuf_free(buffer[pkt_i]);
 			continue;
 		}
 	
@@ -38,6 +42,7 @@ forwarder_receive_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 		if (m_clone == NULL) {
 			RTE_LOG(ERR, FORWARDER, "Could not clone packet! Mempool empty?\n");
 			forwarder->pkts_dropped += 1;
+			rte_pktmbuf_free(m_clone);
 			continue;
 		}
 	
@@ -46,11 +51,13 @@ forwarder_receive_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 		ether_addr_copy(&forwarder->send_port_mac, &eth->s_addr);
 		ether_addr_copy(&forwarder->dst_mac, &eth->d_addr);
 
-		bulk[nb_tx] = m_clone;
-		nb_tx += 1;
+		if (forwarder->decap_on_send) {
+			wrapper_remove_data(m_clone);
+		}
+
+		tx_put(forwarder->tx, &m_clone, 1);
+		forwarder->pkts_send += 1;
 	}
-	int send = tx_put(forwarder->tx, bulk, nb_tx);
-	forwarder->pkts_send += send;
 }
 
 void
@@ -121,6 +128,14 @@ get_forwarder(config_setting_t *f_conf,
 		RTE_LOG(ERR, FORWARDER, "Could not read destination MAC.\n");
 		return 1;
 	}
+
+	// SHOULD DECAP ON SEND
+	int should_decap;
+	if (config_setting_lookup_bool(f_conf, CN_DECAP_ON_SEND, &should_decap) != CONFIG_TRUE) {
+		RTE_LOG(ERR, FORWARDER, "Could not read %s.\n", CN_DECAP_ON_SEND);
+		return 1;
+	}
+	forwarder->decap_on_send = (bool) should_decap;
 
 	forwarder->pkts_received = 0;
 	forwarder->pkts_send = 0;

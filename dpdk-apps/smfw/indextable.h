@@ -16,7 +16,7 @@
 #define INDEXTABLE_H_
 
 #include <rte_mbuf.h>
-#include <rte_spinlock.h>
+#include "components/wrapping.h"
 
 /**
  * Hash Function to use
@@ -56,7 +56,7 @@
 struct indextable_entry {
 	struct rte_mbuf *packet;
 	uint32_t hash_crc;
-	uint64_t forwarding_decisions; // Bitmask!
+	struct metadata_t meta;
 	unsigned received;
 	uint64_t received_time;
 

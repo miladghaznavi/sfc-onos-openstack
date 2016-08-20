@@ -24,9 +24,11 @@ struct counter_t {
 
 	struct ether_addr send_port_mac;
 	struct ether_addr next_mac;
+	struct ether_addr fw_port_mac;
 
 	struct rte_ring *ring;
 	struct rte_mempool *pool;
+	struct rte_mempool *clone_pool;
 	struct indextable *indextable;
 
 	uint64_t pkts_received_fw;
@@ -44,6 +46,8 @@ counter_firewall_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx);
 void
 log_counter(struct counter_t *counter);
 
+// Counter is polled in counter_firewall_pkt
+// This way it is garateed that evrey packet is registered befor received from firewall.
 void
 poll_counter(struct counter_t *counter);
 

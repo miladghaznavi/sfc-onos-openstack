@@ -14,6 +14,7 @@
 #include <rte_log.h>
 #include <rte_ring.h>
 #include <rte_errno.h>
+#include <rte_hash_crc.h>
 
 #define RTE_LOGTYPE_COUNTER RTE_LOGTYPE_USER1
 #define BUFFER_SIZE 32
@@ -31,41 +32,62 @@ count_decissions(uint32_t decissions) {
 }
 
 static struct indextable_entry *
-counter_register(struct counter_t *this, struct rte_mbuf * packet) {
-  // printf("votecounter_register(this = %p, packet = %p)\n", this, packet);
-  //  assert(rte_mbuf_refcnt_read(packet) == 1);
-  struct indextable_entry * entry = indextable_put(this->indextable, packet);
-  return entry;
+counter_register(struct counter_t *counter, struct rte_mbuf *packet) {
+
+	struct metadata_t metadata;
+ 	if (counter->encap_on_register) {
+		metadata.decissions = 0;
+	} else {
+		metadata = *wrapper_get_data(packet);
+		wrapper_remove_data(packet);
+	}
+
+	struct indextable_entry *entry = indextable_put(counter->indextable, packet);
+	entry->meta = metadata;
+
+	return entry;
 }
 
 void
 counter_register_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
+	if (nb_rx == 0) return;
 	struct counter_t *counter = (struct counter_t *) arg;
+
+	if (nb_rx > rte_ring_free_count(counter->ring)) {
+		RTE_LOG(ERR, COUNTER, "Not enough free entries in ring!\n");
+	}
+
 	// enqueue packet in ring
 	// this methode must be thread safe
-
 	counter->pkts_received_r += nb_rx;
 	struct rte_mbuf *bulk[nb_rx];
-	struct wrapper_metadata *metadata;
-	metadata->decissions = 0;
 
+	unsigned nb_registered = 0;
 	for (unsigned i = 0; i < nb_rx; ++i) {
-		bulk[i] = rte_pktmbuf_clone(buffer[i], counter->pool);
-		if (counter->encap_on_register) {
-			wrapper_add_data(counter->pool, bulk[i], metadata);
+
+		bulk[nb_registered] = rte_pktmbuf_clone(buffer[i], counter->pool);
+		if (bulk[nb_registered] == NULL) {
+			RTE_LOG(ERR, COUNTER, "Could not clone mbuf!\n");
+			continue;
 		}
+		nb_registered += 1;
 	}
 
 	int n = rte_ring_enqueue_burst(counter->ring,(void * const*) &bulk, nb_rx);
 	if (n < nb_rx) {
-		RTE_LOG(ERR, COUNTER, "Could not enqueue all new packtes for registration! "
-							  "(%"PRIu32"/%"PRIu32")", n, nb_rx);
+		RTE_LOG(ERR, COUNTER, "Could not enqueue every new packtes for registration! "
+							  "(%"PRIu32"/%"PRIu32") free: %"PRIu32"\n", n, nb_rx, 
+							  rte_ring_free_count(counter->ring));
 	}
 }
 
 void
 counter_firewall_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
+	if (nb_rx == 0) return;
 	struct counter_t *counter = (struct counter_t *) arg;
+
+	poll_counter(counter);
+
 	counter->pkts_received_fw += nb_rx;
 
 	// check table and send packet 
@@ -73,53 +95,67 @@ counter_firewall_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 	// if yes: drop it!
 	// else send it
 
-	struct rte_mbuf *sending[nb_rx];
-	unsigned nb_tx = 0;
-
 	struct indextable_entry *entry;
 	struct rte_mbuf *ok_pkt;
-	struct wrapper_metadata *meta;
+	struct metadata_t *meta;
 	struct ether_hdr *eth;
 
 	for (unsigned i = 0; i < nb_rx; ++i) {
+		struct ether_hdr *eth = rte_pktmbuf_mtod(buffer[i], struct ether_hdr *);
+		if (!is_same_ether_addr(&counter->fw_port_mac, &eth->d_addr)) {
+			RTE_LOG(INFO, COUNTER, "Wrong d_MAC... "FORMAT_MAC"\n", ARG_V_MAC(eth->d_addr));
+			rte_pktmbuf_free(buffer[i]);
+			continue;
+		}
 		entry = indextable_get(counter->indextable, buffer[i]);
+
 		if (entry != NULL) {
 			ok_pkt = entry->packet;
+
 			eth = rte_pktmbuf_mtod(ok_pkt, struct ether_hdr *);
-			meta = rte_pktmbuf_mtod_offset(ok_pkt, struct wrapper_metadata *, 
-								sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr));
+			meta = &entry->meta;
+
 			meta->decissions |= 1 << counter->chain_index;
 
-			if (count_decissions(meta->decissions) >= counter->drop_at) {
-				ether_addr_copy(&counter->dst_mac, &eth->d_addr);
+			int decission_count = count_decissions(meta->decissions);
 
-				if (counter->decap_on_send) {
-					wrapper_remove_data(counter->pool, ok_pkt);
+			if (decission_count >= counter->drop_at) {
+				ether_addr_copy(&counter->next_mac, &eth->d_addr);
+
+				if (!counter->decap_on_send) {
+					wrapper_add_data(ok_pkt, meta);
 				}
 
-				sending[nb_tx] = ok_pkt;
-				nb_tx += 1;
+				counter->pkts_send += 1;
+
+				tx_put(counter->tx, &ok_pkt, 1);
 			} else {
 				counter->pkts_dropped++;
+				rte_pktmbuf_free(buffer[i]);
 			}
+			indextable_delete(counter->indextable, entry);
+
+		} else {
+			RTE_LOG(WARNING, COUNTER, "Received unregistered packet.\n");
+			rte_pktmbuf_free(buffer[i]);
 		}
 	}
-	counter->pkts_send += nb_tx;
-	tx_put(counter->tx, sending, nb_tx);				
 }
 
 void
 log_counter(struct counter_t *c) {
 	RTE_LOG(INFO, COUNTER, "------------- Counter -------------\n");
-	RTE_LOG(INFO, COUNTER, "| Out port:         %"PRIu16"\n", c->tx->port);
-	RTE_LOG(INFO, COUNTER, "| Register port:    %"PRIu16"\n", c->rx_register->in_port);
-	RTE_LOG(INFO, COUNTER, "| Firewall port:    %"PRIu16"\n", c->rx_firewall->in_port);
-	RTE_LOG(INFO, COUNTER, "| send port MAC:    "FORMAT_MAC"\n", ARG_V_MAC(c->send_port_mac));
-	RTE_LOG(INFO, COUNTER, "| dst MAC:          "FORMAT_MAC"\n", ARG_V_MAC(c->dst_mac));
-	RTE_LOG(INFO, COUNTER, "| received fw:      %"PRIu64"\n", c->pkts_received_fw);
-	RTE_LOG(INFO, COUNTER, "| received r:       %"PRIu64"\n", c->pkts_received_r);
-	RTE_LOG(INFO, COUNTER, "| Packets send:     %"PRIu64"\n", c->pkts_send);
-	RTE_LOG(INFO, COUNTER, "| Packets dropped:  %"PRIu64"\n", c->pkts_dropped);
+	RTE_LOG(INFO, COUNTER, "| Out port:          %"PRIu16"\n", c->tx->port);
+	RTE_LOG(INFO, COUNTER, "| Register port:     %"PRIu16"\n", c->rx_register->in_port);
+	RTE_LOG(INFO, COUNTER, "| Firewall port:     %"PRIu16"\n", c->rx_firewall->in_port);
+	RTE_LOG(INFO, COUNTER, "| Firewall port MAC: "FORMAT_MAC"\n", ARG_V_MAC(c->fw_port_mac));
+	RTE_LOG(INFO, COUNTER, "| send port MAC:     "FORMAT_MAC"\n", ARG_V_MAC(c->send_port_mac));
+	RTE_LOG(INFO, COUNTER, "| dst MAC:           "FORMAT_MAC"\n", ARG_V_MAC(c->next_mac));
+	RTE_LOG(INFO, COUNTER, "| received fw:       %"PRIu64"\n", c->pkts_received_fw);
+	RTE_LOG(INFO, COUNTER, "| received r:        %"PRIu64"\n", c->pkts_received_r);
+	RTE_LOG(INFO, COUNTER, "| Packets send:      %"PRIu64"\n", c->pkts_send);
+	RTE_LOG(INFO, COUNTER, "| Packets dropped:   %"PRIu64"\n", c->pkts_dropped);
+	RTE_LOG(INFO, COUNTER, "| Entries replaced:  %"PRIu64"\n", c->indextable->replaced_entries);
 	RTE_LOG(INFO, COUNTER, "------------------------------------\n");
 }
 
@@ -204,6 +240,7 @@ get_counter(config_setting_t *c_conf,
 
 	// SOURCE MAC
 	rte_eth_macaddr_get(counter->tx->port, &counter->send_port_mac);
+	rte_eth_macaddr_get(counter->rx_firewall->in_port, &counter->fw_port_mac);
 
 	//NEXT VNF MAC
 	if (read_mac(c_conf, CN_NEXT_VNF_MAC, &counter->next_mac) != 0) {
