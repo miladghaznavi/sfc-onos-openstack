@@ -15,11 +15,39 @@
 #include <rte_ring.h>
 #include <rte_errno.h>
 #include <rte_hash_crc.h>
+#include <rte_mempool.h>
 
 #define RTE_LOGTYPE_COUNTER RTE_LOGTYPE_USER1
 #define BUFFER_SIZE 32
 #define BUCKET_SIZE 10000
 #define ENTRIE_PER_BUCKET 4
+
+
+static void
+fwd_to_wrapper(struct counter_t *counter, struct rte_mbuf *m, struct metadata_t *meta) {
+	struct ether_hdr *eth = rte_pktmbuf_mtod(m, struct ether_hdr *);
+
+	ether_addr_copy(&counter->next_mac, &eth->d_addr);
+	if (!counter->decap_on_send) {
+		wrapper_add_data(m, meta);
+	}
+	counter->pkts_send += 1;
+	tx_put(counter->tx, &m, 1);
+	counter->nb_mbuf--;
+}
+
+static void
+fwd_timedout_pkts(struct counter_t *counter) {
+	struct indextable_entry *entry = indextable_oldest(counter->indextable);
+	uint64_t age;
+
+	while (entry != NULL && (age = indextable_entry_age(entry)) > counter->timeout) {
+		fwd_to_wrapper(counter, entry->packet, &entry->meta);
+		indextable_delete(counter->indextable, entry);
+		counter->pkts_timedout += 1;
+		entry = indextable_oldest(counter->indextable);
+	}
+}
 
 static int
 count_decissions(uint32_t decissions) {
@@ -33,6 +61,13 @@ count_decissions(uint32_t decissions) {
 
 static struct indextable_entry *
 counter_register(struct counter_t *counter, struct rte_mbuf *packet) {
+
+	struct ether_hdr *eth = rte_pktmbuf_mtod(packet, struct ether_hdr *);
+	if (!is_same_ether_addr(&counter->fw_port_mac, &eth->d_addr)) {
+		// RTE_LOG(INFO, COUNTER, "Wrong d_MAC... "FORMAT_MAC"\n", ARG_V_MAC(eth->d_addr));
+		return NULL;
+	}
+
 
 	struct metadata_t metadata;
  	if (counter->encap_on_register) {
@@ -66,14 +101,17 @@ counter_register_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 	for (unsigned i = 0; i < nb_rx; ++i) {
 
 		bulk[nb_registered] = rte_pktmbuf_clone(buffer[i], counter->pool);
+		counter->nb_mbuf++;
+
 		if (bulk[nb_registered] == NULL) {
 			RTE_LOG(ERR, COUNTER, "Could not clone mbuf!\n");
+			counter->nb_mbuf--;
 			continue;
 		}
 		nb_registered += 1;
 	}
 
-	int n = rte_ring_enqueue_burst(counter->ring,(void * const*) &bulk, nb_rx);
+	int n = rte_ring_enqueue_burst(counter->ring,(void * const*) &bulk, nb_registered);
 	if (n < nb_rx) {
 		RTE_LOG(ERR, COUNTER, "Could not enqueue every new packtes for registration! "
 							  "(%"PRIu32"/%"PRIu32") free: %"PRIu32"\n", n, nb_rx, 
@@ -83,7 +121,6 @@ counter_register_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 
 void
 counter_firewall_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
-	if (nb_rx == 0) return;
 	struct counter_t *counter = (struct counter_t *) arg;
 
 	poll_counter(counter);
@@ -104,42 +141,31 @@ counter_firewall_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 		struct ether_hdr *eth = rte_pktmbuf_mtod(buffer[i], struct ether_hdr *);
 		if (!is_same_ether_addr(&counter->fw_port_mac, &eth->d_addr)) {
 			RTE_LOG(INFO, COUNTER, "Wrong d_MAC... "FORMAT_MAC"\n", ARG_V_MAC(eth->d_addr));
-			rte_pktmbuf_free(buffer[i]);
 			continue;
 		}
 		entry = indextable_get(counter->indextable, buffer[i]);
 
 		if (entry != NULL) {
 			ok_pkt = entry->packet;
-
-			eth = rte_pktmbuf_mtod(ok_pkt, struct ether_hdr *);
 			meta = &entry->meta;
-
 			meta->decissions |= 1 << counter->chain_index;
 
 			int decission_count = count_decissions(meta->decissions);
 
 			if (decission_count >= counter->drop_at) {
-				ether_addr_copy(&counter->next_mac, &eth->d_addr);
-
-				if (!counter->decap_on_send) {
-					wrapper_add_data(ok_pkt, meta);
-				}
-
-				counter->pkts_send += 1;
-
-				tx_put(counter->tx, &ok_pkt, 1);
+				fwd_to_wrapper(counter, ok_pkt, meta);
 			} else {
+				rte_pktmbuf_free(ok_pkt);
 				counter->pkts_dropped++;
-				rte_pktmbuf_free(buffer[i]);
 			}
 			indextable_delete(counter->indextable, entry);
+			counter->nb_mbuf--;
 
 		} else {
 			RTE_LOG(WARNING, COUNTER, "Received unregistered packet.\n");
-			rte_pktmbuf_free(buffer[i]);
 		}
 	}
+	fwd_timedout_pkts(counter);
 }
 
 void
@@ -155,7 +181,13 @@ log_counter(struct counter_t *c) {
 	RTE_LOG(INFO, COUNTER, "| received r:        %"PRIu64"\n", c->pkts_received_r);
 	RTE_LOG(INFO, COUNTER, "| Packets send:      %"PRIu64"\n", c->pkts_send);
 	RTE_LOG(INFO, COUNTER, "| Packets dropped:   %"PRIu64"\n", c->pkts_dropped);
+	RTE_LOG(INFO, COUNTER, "| Packets timedout:  %"PRIu64"\n", c->pkts_timedout);
 	RTE_LOG(INFO, COUNTER, "| Entries replaced:  %"PRIu64"\n", c->indextable->replaced_entries);
+	RTE_LOG(INFO, COUNTER, "| mbufs:             %"PRIu32"\n", rte_mempool_count(c->pool));
+	struct indextable_entry *entry = indextable_oldest(c->indextable);
+	if (entry != NULL) {
+		RTE_LOG(INFO, COUNTER, "| oldest :   %"PRIu64"\n", indextable_entry_age(entry));
+	}
 	RTE_LOG(INFO, COUNTER, "------------------------------------\n");
 }
 
@@ -286,6 +318,14 @@ get_counter(config_setting_t *c_conf,
 	}
 	counter->decap_on_send = (bool) should_decap;
 
+	// TIMEOUT
+	int timeout;
+	if (config_setting_lookup_int(c_conf, CN_TIMEOUT, &timeout) != CONFIG_TRUE) {
+		RTE_LOG(ERR, COUNTER, "Could not read %s.\n", CN_TIMEOUT);
+		return 1;
+	}
+	counter->timeout = timeout;
+
 	// INIT RING
 	counter->ring = rte_ring_create("counter_ring",
 									(1 << log_ring_size),
@@ -330,8 +370,9 @@ get_counter(config_setting_t *c_conf,
 	counter->pkts_received_r = 0;
 	counter->pkts_send = 0;
 	counter->pkts_dropped = 0;
+	counter->pkts_timedout = 0;
 	counter->pool = appconfig->mempool;
-
+	counter->nb_mbuf = 0;
 
 	return 0;
 }

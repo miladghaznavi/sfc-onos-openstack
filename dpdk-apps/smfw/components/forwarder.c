@@ -21,28 +21,28 @@ forwarder_receive_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 	if (nb_rx == 0) return;
 	struct forwarder_t *forwarder = (struct forwarder_t *) arg;
 	forwarder->pkts_received += nb_rx;
-
 	struct rte_mbuf *bulk[nb_rx];
 	unsigned nb_tx = 0;
 
 	for (unsigned pkt_i = 0; pkt_i < nb_rx; ++pkt_i) {
+
 		struct ether_hdr *eth_old = rte_pktmbuf_mtod(buffer[pkt_i], struct ether_hdr *);
 	
 		/* forwarde packet only if it was send to our MAC. */
 		if (!is_same_ether_addr(&forwarder->receive_port_mac, &eth_old->d_addr)) {
-			RTE_LOG(INFO, FORWARDER, "Wrong d_MAC... "FORMAT_MAC"\n", ARG_V_MAC(eth_old->d_addr));
+			// RTE_LOG(INFO, FORWARDER, "Wrong d_MAC... "FORMAT_MAC"\n", ARG_V_MAC(eth_old->d_addr));
 			forwarder->pkts_dropped += 1;
-			rte_pktmbuf_free(buffer[pkt_i]);
 			continue;
 		}
 	
 		/* Clone the mbuf. */
 		struct rte_mbuf *m_clone = rte_pktmbuf_clone(buffer[pkt_i], forwarder->pool);
+		forwarder->nb_mbuf++;
 	
 		if (m_clone == NULL) {
 			RTE_LOG(ERR, FORWARDER, "Could not clone packet! Mempool empty?\n");
 			forwarder->pkts_dropped += 1;
-			rte_pktmbuf_free(m_clone);
+			forwarder->nb_mbuf--;
 			continue;
 		}
 	
@@ -55,6 +55,7 @@ forwarder_receive_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 			wrapper_remove_data(m_clone);
 		}
 
+		forwarder->nb_mbuf--;
 		tx_put(forwarder->tx, &m_clone, 1);
 		forwarder->pkts_send += 1;
 	}
@@ -140,6 +141,7 @@ get_forwarder(config_setting_t *f_conf,
 	forwarder->pkts_received = 0;
 	forwarder->pkts_send = 0;
 	forwarder->pkts_dropped = 0;
+	forwarder->nb_mbuf = 0;
 	forwarder->pool = appconfig->mempool;
 
 	return 0;

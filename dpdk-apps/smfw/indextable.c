@@ -3,6 +3,8 @@
 
 #include <assert.h>
 #include <string.h>
+#include <time.h>
+#include <sys/time.h>
 
 #include <rte_malloc.h>
 #include <rte_mbuf.h>
@@ -12,6 +14,14 @@
 #include <rte_log.h>
 
 #define RTE_LOGTYPE_INDEXTABLE RTE_LOGTYPE_USER1
+
+static uint64_t
+get_time_usec(void) {
+	struct timeval time_val;
+	gettimeofday(&time_val, NULL);
+	return (uint64_t) (time_val.tv_sec * 1000000 + time_val.tv_usec);
+
+}
 
 /**
  * Calculates the index of a given packet.
@@ -57,6 +67,16 @@ indextable_compare(struct rte_mbuf *packet1, struct rte_mbuf *packet2) {
 	return memcmp(data1, data2, packet1->data_len - 2* sizeof(struct ether_addr)) == 0;
 }
 
+struct indextable_entry *
+indextable_oldest(struct indextable *this) {
+	return (struct indextable_entry *) this->tail.prev->item;
+}
+
+uint64_t
+indextable_entry_age(struct indextable_entry *entry) {
+	uint64_t now = get_time_usec();
+	return (now - entry->received_time) / 1000;
+}
 
 struct indextable *
 indextable_create(unsigned nb_buckets, unsigned nb_entries_per_bucket) {
@@ -78,11 +98,17 @@ indextable_create(unsigned nb_buckets, unsigned nb_entries_per_bucket) {
 	this->replaced_entries      = 0;
 	this->nb_entries_used       = 0;
 
+	this->tail.next = NULL;
+	this->tail.prev = &this->head;
+
+	this->head.next = &this->tail;
+	this->head.prev = NULL;
+
 	// Initialize the entries.
 	unsigned nb_entries = this->nb_buckets * this->nb_entries_per_bucket;
 	for (unsigned i = 0; i < nb_entries; i++) {
 		struct indextable_entry *entry = &this->entries[i];
-
+		entry->received_time = 0;
 		entry->packet = NULL;
 	}
 
@@ -93,9 +119,12 @@ indextable_create(unsigned nb_buckets, unsigned nb_entries_per_bucket) {
 void
 indextable_destroy(struct indextable *this) {
 	unsigned nb_entries = this->nb_buckets * this->nb_entries_per_bucket;
+
 	for (unsigned i = 0; i < nb_entries; i++) {
 		struct indextable_entry *entry = &this->entries[i];
-		
+
+		d_list_remove(entry->dl_entry);
+
 		if (entry->packet != NULL) {
 			struct rte_mbuf * buf = entry->packet;
 			indextable_delete(this, entry);
@@ -107,11 +136,15 @@ indextable_destroy(struct indextable *this) {
 
 
 void
-indextable_delete(struct indextable *this, struct indextable_entry * entry) {
+indextable_delete(struct indextable *this, struct indextable_entry *entry) {
 	// Skip freeing the packet if not existing.
 	if (unlikely(entry->packet == NULL)) {
 		return;
 	}
+
+
+	d_list_remove(entry->dl_entry);
+	entry->dl_entry = NULL;
 
 	uint16_t refcnt = rte_mbuf_refcnt_read(entry->packet);
 	if (unlikely(refcnt > 1)) {
@@ -125,8 +158,6 @@ indextable_delete(struct indextable *this, struct indextable_entry * entry) {
 	entry->packet = NULL;
 
 	this->nb_entries_used--;
-
-	return;
 }
 
 
@@ -176,10 +207,11 @@ indextable_put(struct indextable *this, struct rte_mbuf *packet) {
 	}
 
 	// Set the values of the new entry.
-	entry->packet           = packet;
-	entry->received         = 0;
-	entry->received_time    = rte_get_tsc_cycles();
-	entry->hash_crc         = hash_crc;
+	entry->packet        = packet;
+	entry->received      = 0;
+	entry->received_time = get_time_usec();
+	entry->hash_crc      = hash_crc;
+	entry->dl_entry 	 = d_list_insert_back(&this->head, entry);
 
 	// Increase the reference counter to prevent the packet being freed when sent.
 	// It needs to be freed in the delete_index_table_entry()-function.

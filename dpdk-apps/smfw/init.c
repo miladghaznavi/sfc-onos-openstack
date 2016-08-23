@@ -94,16 +94,16 @@ check_all_ports_link_status(uint8_t port_num, uint32_t port_mask)
 			rte_eth_link_get_nowait(portid, &link);
 			// Print link status if flag set.
 			if (print_flag == 1) {
-	if (link.link_status) {
-		printf("  Port %d Link Up - speed %u "
-			"Mbps - %s\n", (uint8_t)portid,
-			(unsigned)link.link_speed,
-			(link.link_duplex == ETH_LINK_FULL_DUPLEX) ?
-			("full-duplex") : ("half-duplex\n"));
-	} else {
-		printf("Port %d DOWN\n", (uint8_t) portid);
-	}
-	continue;
+				if (link.link_status) {
+					printf("  Port %d Link Up - speed %u "
+						"Mbps - %s\n", (uint8_t)portid,
+						(unsigned)link.link_speed,
+						(link.link_duplex == ETH_LINK_FULL_DUPLEX) ?
+						("full-duplex") : ("half-duplex\n"));
+				} else {
+					printf("Port %d DOWN\n", (uint8_t) portid);
+				}
+				continue;
 			}
 			// Clear all_ports_up flag if any link down.
 			if (link.link_status == 0) {
@@ -113,7 +113,7 @@ check_all_ports_link_status(uint8_t port_num, uint32_t port_mask)
 		}
 		// After finally printing all link status, get out.
 		if (print_flag == 1)
-	break;
+			break;
 		
 		if (all_ports_up == 0) {
 			printf(".");
@@ -385,6 +385,9 @@ read_config(const char * file, struct app_config * appconfig) {
 	}
 	appconfig->mempool = create_pool((1 << pool_size) - 1);
 
+	/*
+	 * Port set up
+	 */
 	for(unsigned i = 0; i < appconfig->nb_ports; ++i) {
 		if ((appconfig->enabled_ports & (1 << i)) == 0) {
 			appconfig->nb_ports--;
@@ -401,7 +404,7 @@ read_config(const char * file, struct app_config * appconfig) {
 	}
 
 	/*
-	 * Core Setup
+	 * Core set up
 	 */
 	struct core_config * core_configs = malloc(sizeof(struct core_config) * appconfig->nb_cores);
 	if (read_core_config(appconfig, config, core_configs) != 0) {

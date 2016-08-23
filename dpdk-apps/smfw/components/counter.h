@@ -21,7 +21,8 @@ struct counter_t {
 	unsigned drop_at;
 	bool encap_on_register;
 	bool decap_on_send;
-
+	uint64_t timeout;
+	
 	struct ether_addr send_port_mac;
 	struct ether_addr next_mac;
 	struct ether_addr fw_port_mac;
@@ -35,6 +36,8 @@ struct counter_t {
 	uint64_t pkts_received_r;
 	uint64_t pkts_send;
 	uint64_t pkts_dropped;
+	uint64_t pkts_timedout;
+    unsigned nb_mbuf;
 };
 
 void

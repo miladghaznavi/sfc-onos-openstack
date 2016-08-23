@@ -19,6 +19,7 @@ log_receiver(struct receiver_t *receiver) {
     RTE_LOG(INFO, RECEIVER, "| In port:          %"PRIu32"\n", receiver->in_port);
     RTE_LOG(INFO, RECEIVER, "| MAC:              "FORMAT_MAC"\n", ARG_V_MAC(receiver->mac));
     RTE_LOG(INFO, RECEIVER, "| Packets received: %"PRIu64"\n", receiver->pkts_received);
+    RTE_LOG(INFO, RECEIVER, "| mbufs:            %"PRIu32"\n", receiver->nb_mbuf);
     RTE_LOG(INFO, RECEIVER, "------------------------------------\n");
 }
 
@@ -29,6 +30,7 @@ poll_receiver(struct receiver_t *receiver) {
 
     unsigned nb_rx = rte_eth_rx_burst((uint8_t) port, 0,
                     pkts_burst, BURST_SIZE);
+    receiver->nb_mbuf += nb_rx;
 
     receiver->pkts_received += nb_rx;
 
@@ -37,7 +39,12 @@ poll_receiver(struct receiver_t *receiver) {
         receiver->handler[h_index](receiver->args[h_index], pkts_burst, nb_rx);
     }
     for (unsigned p_index = 0; p_index < nb_rx; ++p_index) {
-        rte_pktmbuf_free(pkts_burst[p_index]);
+        if (rte_mbuf_refcnt_read(pkts_burst[p_index]) > 1) {
+            rte_mbuf_refcnt_update(pkts_burst[p_index], -1);
+        } else {
+            rte_pktmbuf_free(pkts_burst[p_index]);
+        }
+        receiver->nb_mbuf--;
     }
 }
 
@@ -50,6 +57,7 @@ init_receiver(unsigned core_id, unsigned in_port,
 
     receiver->nb_handler = 0;
     receiver->pkts_received = 0;
+    receiver->nb_mbuf = 0;
 
     rte_eth_macaddr_get(receiver->in_port, &receiver->mac);
 }

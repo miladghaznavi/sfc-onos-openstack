@@ -51,5 +51,7 @@
 #define CN_TABLE_SIZE               "table_size"
 #define CN_BUCKET_PER_ENTRY         "buckets_per_entry"
 
+#define CN_TIMEOUT                  "timeout"
+
 #define CN_CHAIN_INDEX              "chain_index"
 #endif /* CONFIG_H_ */

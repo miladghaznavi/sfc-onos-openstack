@@ -30,6 +30,7 @@ struct forwarder_t {
 	uint64_t pkts_dropped;
 
 	struct rte_mempool *pool;
+    unsigned nb_mbuf;
 };
 
 void

@@ -17,6 +17,7 @@
 
 #include <rte_mbuf.h>
 #include "components/wrapping.h"
+#include "d_list.h"
 
 /**
  * Hash Function to use
@@ -37,22 +38,7 @@
 
 #define INDEXTABLE_CAN_BE_DELETED 0xFFFF
 
-/**
- * The entry where information about the packets destined for the firewall
- * network are stored.
- *
- * If N firewalls are used in the system, N index_table_entries belong to one
- * packet entry.
- *
- * packet:
- *    The corresponding packet for which the forwarding decision is made.
- * received:
- *    The number the firewall with the associated firewall-ID has forwarded
- *    the packet.
- * firewall:
- *    Firewalls from which the forwarding decision is already received are
- *    marked in this array to prevent receiving a decision multiple times.
- */
+
 struct indextable_entry {
 	struct rte_mbuf *packet;
 	uint32_t hash_crc;
@@ -62,6 +48,7 @@ struct indextable_entry {
 
 	// Used for SHA256 etc
 	unsigned char data[64];
+	struct d_list_t *dl_entry;
 };
 
 /**
@@ -77,7 +64,18 @@ struct indextable {
 
 	// Stats
 	unsigned long replaced_entries;
+
+	// double linked list of all entries in chronological order. [TAIL| <<older<< | >>newer>> |HEAD]
+	struct d_list_t tail;
+	struct d_list_t head;
 };
+
+struct indextable_entry *
+indextable_oldest(struct indextable *this);
+
+uint64_t
+indextable_entry_age(struct indextable_entry *entry);
+
 
 /**
  * Creates an index table and allocates memory for it.
