@@ -63,11 +63,6 @@ static struct indextable_entry *
 counter_register(struct counter_t *counter, struct rte_mbuf *packet) {
 
 	struct ether_hdr *eth = rte_pktmbuf_mtod(packet, struct ether_hdr *);
-	if (!is_same_ether_addr(&counter->fw_port_mac, &eth->d_addr)) {
-		// RTE_LOG(INFO, COUNTER, "Wrong d_MAC... "FORMAT_MAC"\n", ARG_V_MAC(eth->d_addr));
-		return NULL;
-	}
-
 
 	struct metadata_t metadata;
  	if (counter->encap_on_register) {
@@ -162,7 +157,7 @@ counter_firewall_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 			counter->nb_mbuf--;
 
 		} else {
-			RTE_LOG(WARNING, COUNTER, "Received unregistered packet.\n");
+			RTE_LOG(WARNING, COUNTER, "Received unregistered packet. %u \n", d_list_len(&counter->indextable->head));
 		}
 	}
 	fwd_timedout_pkts(counter);
@@ -175,6 +170,7 @@ log_counter(struct counter_t *c) {
 	RTE_LOG(INFO, COUNTER, "| Register port:     %"PRIu16"\n", c->rx_register->in_port);
 	RTE_LOG(INFO, COUNTER, "| Firewall port:     %"PRIu16"\n", c->rx_firewall->in_port);
 	RTE_LOG(INFO, COUNTER, "| Firewall port MAC: "FORMAT_MAC"\n", ARG_V_MAC(c->fw_port_mac));
+	RTE_LOG(INFO, COUNTER, "| Timeout:           %"PRIu64"\n", c->timeout);
 	RTE_LOG(INFO, COUNTER, "| send port MAC:     "FORMAT_MAC"\n", ARG_V_MAC(c->send_port_mac));
 	RTE_LOG(INFO, COUNTER, "| dst MAC:           "FORMAT_MAC"\n", ARG_V_MAC(c->next_mac));
 	RTE_LOG(INFO, COUNTER, "| received fw:       %"PRIu64"\n", c->pkts_received_fw);

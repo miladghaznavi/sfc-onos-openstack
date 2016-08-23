@@ -84,9 +84,9 @@ print_stats(void *dummy) {
         printf("%s%s", clr, topLeft);
 
 
-        for (unsigned i = 0; i < appconfig->nb_receiver; i++) {
-            log_receiver(appconfig->receiver[i]);
-        }
+        // for (unsigned i = 0; i < appconfig->nb_receiver; i++) {
+        //     log_receiver(appconfig->receiver[i]);
+        // }
 
         for (unsigned i = 0; i < appconfig->nb_forwarder; i++) {
             log_forwarder(appconfig->forwarder[i]);
