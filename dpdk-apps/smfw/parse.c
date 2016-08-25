@@ -52,6 +52,22 @@ parse_ip(const char *ips, uint32_t* ip) {
 }
 
 void
+print_packet_hex(struct rte_mbuf* m) {
+    unsigned pos = 0;
+
+    while (m != NULL) {
+        uint8_t *byte = rte_pktmbuf_mtod(m, uint8_t *);
+        for (unsigned i = 0; i < m->data_len; i++) {
+            if (pos++ % 4 == 0) printf("\n");
+            printf("%02x ", byte[i]);
+
+        }
+        m = m->next;
+    }
+    printf("\n");
+}
+
+void
 print_packet(struct rte_mbuf* m, int has_meta) {
     struct ether_hdr *eth = rte_pktmbuf_mtod(m, struct ether_hdr *);
     struct ipv4_hdr *ip = rte_pktmbuf_mtod_offset(m, struct ipv4_hdr *, sizeof(struct ether_hdr));

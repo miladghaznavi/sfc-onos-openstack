@@ -95,6 +95,13 @@ counter_register_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 	unsigned nb_registered = 0;
 	for (unsigned i = 0; i < nb_rx; ++i) {
 
+		// forwarder changes MAC...
+		struct ether_hdr *eth = rte_pktmbuf_mtod(buffer[i], struct ether_hdr *);
+		if (!is_same_ether_addr(&counter->rx_register->mac, &eth->d_addr)) {
+			RTE_LOG(INFO, COUNTER, "register drop: "FORMAT_MAC" != "FORMAT_MAC"\n",ARG_V_MAC(counter->rx_register->mac), ARG_V_MAC(eth->d_addr));
+			continue;
+		}
+
 		bulk[nb_registered] = rte_pktmbuf_clone(buffer[i], counter->pool);
 		counter->nb_mbuf++;
 
@@ -136,6 +143,7 @@ counter_firewall_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 		struct ether_hdr *eth = rte_pktmbuf_mtod(buffer[i], struct ether_hdr *);
 		if (!is_same_ether_addr(&counter->fw_port_mac, &eth->d_addr)) {
 			RTE_LOG(INFO, COUNTER, "Wrong d_MAC... "FORMAT_MAC"\n", ARG_V_MAC(eth->d_addr));
+			print_packet(buffer[i], 0);
 			continue;
 		}
 		entry = indextable_get(counter->indextable, buffer[i]);
@@ -157,7 +165,8 @@ counter_firewall_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 			counter->nb_mbuf--;
 
 		} else {
-			RTE_LOG(WARNING, COUNTER, "Received unregistered packet. %u \n", d_list_len(&counter->indextable->head));
+			RTE_LOG(WARNING, COUNTER, "Received unregistered packet.\n");
+			print_packet_hex(buffer[i]);
 		}
 	}
 	fwd_timedout_pkts(counter);

@@ -19,6 +19,9 @@ int
 parse_ip(const char *ips, uint32_t* ip);
 
 void
+print_packet_hex(struct rte_mbuf* m);
+
+void
 print_packet(struct rte_mbuf* m, int has_meta);
 
 #endif /* PARSE_H_ */

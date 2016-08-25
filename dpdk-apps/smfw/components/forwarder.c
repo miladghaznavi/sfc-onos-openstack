@@ -12,6 +12,7 @@
 #include <rte_ethdev.h>
 #include <rte_ether.h>
 #include <rte_log.h>
+#include <rte_byteorder.h>
 
 #define RTE_LOGTYPE_FORWARDER RTE_LOGTYPE_USER1
 
@@ -36,28 +37,41 @@ forwarder_receive_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 		}
 	
 		/* Clone the mbuf. */
-		struct rte_mbuf *m_clone = rte_pktmbuf_clone(buffer[pkt_i], forwarder->pool);
-		forwarder->nb_mbuf++;
+		struct rte_mbuf *m_clone = rte_pktmbuf_clone(buffer[pkt_i], forwarder->clone_pool);
+		struct rte_mbuf *header = rte_pktmbuf_clone(forwarder->eth_hdr, forwarder->clone_pool);
+		forwarder->nb_mbuf += 2;
 	
-		if (m_clone == NULL) {
+		if (m_clone == NULL || header == NULL) {
 			RTE_LOG(ERR, FORWARDER, "Could not clone packet! Mempool empty?\n");
 			forwarder->pkts_dropped += 1;
-			forwarder->nb_mbuf--;
+			forwarder->nb_mbuf -= 2;
 			continue;
 		}
-	
-		struct ether_hdr *eth = rte_pktmbuf_mtod(m_clone, struct ether_hdr *);
-	
-		ether_addr_copy(&forwarder->send_port_mac, &eth->s_addr);
-		ether_addr_copy(&forwarder->dst_mac, &eth->d_addr);
+
+		// RTE_LOG(INFO, FORWARDER, "Old packet:\n");
+		// print_packet_hex(m_clone);
 
 		if (forwarder->decap_on_send) {
 			wrapper_remove_data(m_clone);
 		}
 
-		forwarder->nb_mbuf--;
-		tx_put(forwarder->tx, &m_clone, 1);
+		// remove ether header
+		rte_pktmbuf_adj(m_clone, sizeof(struct ether_hdr));
+
+		// prepend new ether header:
+		rte_pktmbuf_chain(header, m_clone);
+
+		// RTE_LOG(INFO, FORWARDER, "New packet:\n");
+		// print_packet_hex(header);
+
+		// send chained packet:
+		tx_put(forwarder->tx, &header, 1);
 		forwarder->pkts_send += 1;
+
+		// free clone mbuf
+		forwarder->nb_mbuf -= 2;
+		rte_pktmbuf_free(header);
+		rte_pktmbuf_free(m_clone);
 	}
 }
 
@@ -142,7 +156,19 @@ get_forwarder(config_setting_t *f_conf,
 	forwarder->pkts_send = 0;
 	forwarder->pkts_dropped = 0;
 	forwarder->nb_mbuf = 0;
-	forwarder->pool = appconfig->mempool;
+
+	forwarder->pkt_pool = appconfig->mempool;
+	forwarder->clone_pool = appconfig->mempool;
+
+	forwarder->eth_hdr = rte_pktmbuf_alloc(forwarder->pkt_pool);
+	forwarder->eth_hdr->data_len = sizeof(struct ether_hdr);
+
+	struct ether_hdr *eth = rte_pktmbuf_mtod(forwarder->eth_hdr, struct ether_hdr *);
+
+	eth->ether_type = rte_be_to_cpu_16(ETHER_TYPE_IPv4);
+	ether_addr_copy(&forwarder->send_port_mac, &eth->s_addr);
+	ether_addr_copy(&forwarder->dst_mac, &eth->d_addr);
+	print_packet_hex(forwarder->eth_hdr);
 
 	return 0;
 }

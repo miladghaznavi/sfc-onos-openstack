@@ -29,7 +29,9 @@ struct forwarder_t {
 	uint64_t pkts_send;
 	uint64_t pkts_dropped;
 
-	struct rte_mempool *pool;
+	struct rte_mbuf *eth_hdr;
+	struct rte_mempool *pkt_pool;
+	struct rte_mempool *clone_pool;
     unsigned nb_mbuf;
 };
 
