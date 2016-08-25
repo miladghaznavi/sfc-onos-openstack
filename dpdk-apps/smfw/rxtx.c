@@ -31,12 +31,12 @@ tx_create_immediate(unsigned port, unsigned queue) {
 int
 tx_put(struct transmit_t *this, struct rte_mbuf **ms, int nb_tx) {
 
-	for (unsigned i = 0; i < nb_tx; ++i) {
-		rte_mbuf_sanity_check(ms[i], 1);
-		if (rte_mbuf_refcnt_read(ms[i]) < 1) RTE_LOG(WARNING, TX, "Ref count less than 1!\n");
+	// for (unsigned i = 0; i < nb_tx; ++i) {
+	// 	rte_mbuf_sanity_check(ms[i], 1);
+	// 	if (rte_mbuf_refcnt_read(ms[i]) < 1) RTE_LOG(WARNING, TX, "Ref count less than 1!\n");
 
-		struct ether_hdr *eth = rte_pktmbuf_mtod(ms[i], struct ether_hdr *);
-		ether_addr_copy(&this->send_port_mac, &eth->s_addr);
-	}
+	// 	struct ether_hdr *eth = rte_pktmbuf_mtod(ms[i], struct ether_hdr *);
+	// 	ether_addr_copy(&this->send_port_mac, &eth->s_addr);
+	// }
 	return rte_eth_tx_burst(this->port, this->queue, ms, nb_tx);
 }

@@ -143,7 +143,6 @@ counter_firewall_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 		struct ether_hdr *eth = rte_pktmbuf_mtod(buffer[i], struct ether_hdr *);
 		if (!is_same_ether_addr(&counter->fw_port_mac, &eth->d_addr)) {
 			RTE_LOG(INFO, COUNTER, "Wrong d_MAC... "FORMAT_MAC"\n", ARG_V_MAC(eth->d_addr));
-			print_packet(buffer[i], 0);
 			continue;
 		}
 		entry = indextable_get(counter->indextable, buffer[i]);

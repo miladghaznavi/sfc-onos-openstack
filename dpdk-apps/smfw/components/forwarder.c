@@ -65,13 +65,8 @@ forwarder_receive_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 		// print_packet_hex(header);
 
 		// send chained packet:
-		tx_put(forwarder->tx, &header, 1);
-		forwarder->pkts_send += 1;
-
-		// free clone mbuf
+		forwarder->pkts_send += tx_put(forwarder->tx, &header, 1);
 		forwarder->nb_mbuf -= 2;
-		rte_pktmbuf_free(header);
-		rte_pktmbuf_free(m_clone);
 	}
 }
 
