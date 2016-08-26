@@ -38,6 +38,8 @@ struct counter_t {
 	uint64_t pkts_dropped;
 	uint64_t pkts_timedout;
     unsigned nb_mbuf;
+    double time;
+    uint64_t nb_measurements;
 };
 
 void

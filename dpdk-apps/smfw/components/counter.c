@@ -5,6 +5,7 @@
 #include "../parse.h"
 #include "../init.h"
 #include "../indextable.h"
+#include "../d_list.h"
 #include "wrapping.h"
 
 #include <stdlib.h>
@@ -124,6 +125,7 @@ counter_register_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 void
 counter_firewall_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 	struct counter_t *counter = (struct counter_t *) arg;
+    clock_t start = clock(), diff;
 
 	poll_counter(counter);
 
@@ -165,34 +167,41 @@ counter_firewall_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 
 		} else {
 			RTE_LOG(WARNING, COUNTER, "Received unregistered packet.\n");
-			print_packet_hex(buffer[i]);
+
+			// print_packet_hex(buffer[i]);
 		}
 	}
 	fwd_timedout_pkts(counter);
+    diff = clock() - start;
+    counter->time += diff * 1000.0 / CLOCKS_PER_SEC;
+    counter->nb_measurements += 1;
 }
 
+//| Firewall port MAC |   send port MAC   |      dst MAC      |
 void
 log_counter(struct counter_t *c) {
-	RTE_LOG(INFO, COUNTER, "------------- Counter -------------\n");
-	RTE_LOG(INFO, COUNTER, "| Out port:          %"PRIu16"\n", c->tx->port);
-	RTE_LOG(INFO, COUNTER, "| Register port:     %"PRIu16"\n", c->rx_register->in_port);
-	RTE_LOG(INFO, COUNTER, "| Firewall port:     %"PRIu16"\n", c->rx_firewall->in_port);
-	RTE_LOG(INFO, COUNTER, "| Firewall port MAC: "FORMAT_MAC"\n", ARG_V_MAC(c->fw_port_mac));
-	RTE_LOG(INFO, COUNTER, "| Timeout:           %"PRIu64"\n", c->timeout);
-	RTE_LOG(INFO, COUNTER, "| send port MAC:     "FORMAT_MAC"\n", ARG_V_MAC(c->send_port_mac));
-	RTE_LOG(INFO, COUNTER, "| dst MAC:           "FORMAT_MAC"\n", ARG_V_MAC(c->next_mac));
-	RTE_LOG(INFO, COUNTER, "| received fw:       %"PRIu64"\n", c->pkts_received_fw);
-	RTE_LOG(INFO, COUNTER, "| received r:        %"PRIu64"\n", c->pkts_received_r);
-	RTE_LOG(INFO, COUNTER, "| Packets send:      %"PRIu64"\n", c->pkts_send);
-	RTE_LOG(INFO, COUNTER, "| Packets dropped:   %"PRIu64"\n", c->pkts_dropped);
-	RTE_LOG(INFO, COUNTER, "| Packets timedout:  %"PRIu64"\n", c->pkts_timedout);
+	RTE_LOG(INFO, COUNTER, "-------------------------- Counter --------------------------\n");
+	// RTE_LOG(INFO, COUNTER, "| Timeout:           %"PRIu64"\n", c->timeout);
+	// RTE_LOG(INFO, COUNTER, "| Out port:          %"PRIu16"\n", c->tx->port);
+	// RTE_LOG(INFO, COUNTER, "| Register port:     %"PRIu16"\n", c->rx_register->in_port);
+	// RTE_LOG(INFO, COUNTER, "| Firewall port:     %"PRIu16"\n", c->rx_firewall->in_port);
+	RTE_LOG(INFO, COUNTER, "| Firewall port MAC |   send port MAC   |      dst MAC      |\n");
+	RTE_LOG(INFO, COUNTER, "| "FORMAT_MAC" | "FORMAT_MAC" | "FORMAT_MAC" |\n", 
+		ARG_V_MAC(c->fw_port_mac), ARG_V_MAC(c->send_port_mac), ARG_V_MAC(c->next_mac));
+
+	RTE_LOG(INFO, COUNTER, "|---------------- Packet stats ----------------\n");
+	RTE_LOG(INFO, COUNTER, "| rx FW  |  rx R  |  send  | dropped | timeout | \n");
+	RTE_LOG(INFO, COUNTER, "| %6"PRIu64" | %6"PRIu64" | %6"PRIu64" | %7"PRIu64" | %7"PRIu64" |\n", 
+		c->pkts_received_fw, c->pkts_received_r, c->pkts_send, c->pkts_dropped, c->pkts_timedout);
 	RTE_LOG(INFO, COUNTER, "| Entries replaced:  %"PRIu64"\n", c->indextable->replaced_entries);
+	RTE_LOG(INFO, COUNTER, "| nb Entries:        %"PRIu32"\n", d_list_len(&c->indextable->tail)-2);
+    RTE_LOG(INFO, COUNTER, "| Time:             %f\n", c->time/c->nb_measurements);
 	RTE_LOG(INFO, COUNTER, "| mbufs:             %"PRIu32"\n", rte_mempool_count(c->pool));
 	struct indextable_entry *entry = indextable_oldest(c->indextable);
 	if (entry != NULL) {
 		RTE_LOG(INFO, COUNTER, "| oldest :   %"PRIu64"\n", indextable_entry_age(entry));
 	}
-	RTE_LOG(INFO, COUNTER, "------------------------------------\n");
+	RTE_LOG(INFO, COUNTER, "-------------------------------------------------------------\n");
 }
 
 void
@@ -378,6 +387,8 @@ get_counter(config_setting_t *c_conf,
 	counter->pool = appconfig->pkt_pool;
 	counter->clone_pool = appconfig->clone_pool;
 	counter->nb_mbuf = 0;
+    counter->time = 0.0;
+    counter->nb_measurements = 0.0;
 
 	return 0;
 }

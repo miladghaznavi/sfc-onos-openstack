@@ -22,10 +22,10 @@ forwarder_receive_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 	if (nb_rx == 0) return;
 	struct forwarder_t *forwarder = (struct forwarder_t *) arg;
 	forwarder->pkts_received += nb_rx;
-	struct rte_mbuf *bulk[nb_rx];
 	unsigned nb_tx = 0;
 
 	for (unsigned pkt_i = 0; pkt_i < nb_rx; ++pkt_i) {
+        clock_t start = clock(), diff;
 
 		struct ether_hdr *eth_old = rte_pktmbuf_mtod(buffer[pkt_i], struct ether_hdr *);
 	
@@ -67,6 +67,10 @@ forwarder_receive_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 		// send chained packet:
 		forwarder->pkts_send += tx_put(forwarder->tx, &header, 1);
 		forwarder->nb_mbuf -= 2;
+
+        diff = clock() - start;
+        forwarder->time += diff * 1000.0 / CLOCKS_PER_SEC;
+        forwarder->nb_measurements += 1;
 	}
 }
 
@@ -80,6 +84,7 @@ log_forwarder(struct forwarder_t *f) {
 	RTE_LOG(INFO, FORWARDER, "| Packets received: %"PRIu64"\n", f->pkts_received);
 	RTE_LOG(INFO, FORWARDER, "| Packets send:     %"PRIu64"\n", f->pkts_send);
 	RTE_LOG(INFO, FORWARDER, "| Packets dropped:  %"PRIu64"\n", f->pkts_dropped);
+    RTE_LOG(INFO, FORWARDER, "| Time:             %f\n", f->time/f->nb_measurements);
 	RTE_LOG(INFO, FORWARDER, "-------------------------------------\n");
 }
 
@@ -151,6 +156,8 @@ get_forwarder(config_setting_t *f_conf,
 	forwarder->pkts_send = 0;
 	forwarder->pkts_dropped = 0;
 	forwarder->nb_mbuf = 0;
+    forwarder->time = 0.0;
+    forwarder->nb_measurements = 0.0;
 
 	forwarder->pkt_pool = appconfig->pkt_pool;
 	forwarder->clone_pool = appconfig->clone_pool;

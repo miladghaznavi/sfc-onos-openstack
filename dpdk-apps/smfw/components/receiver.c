@@ -4,6 +4,7 @@
 #include "../parse.h"
 
 #include <libconfig.h>
+#include <time.h>
 
 #include <rte_log.h>
 #include <rte_ether.h>
@@ -29,9 +30,11 @@ poll_receiver(struct receiver_t *receiver) {
 
     unsigned nb_rx = rte_eth_rx_burst((uint8_t) port, 0,
                     pkts_burst, BURST_SIZE);
+    
     receiver->nb_mbuf += nb_rx;
 
     receiver->pkts_received += nb_rx;
+
 
     for (unsigned h_index = 0; h_index < receiver->nb_handler; ++h_index) {
         /* handover packet to handler. */

@@ -33,6 +33,8 @@ struct forwarder_t {
 	struct rte_mempool *pkt_pool;
 	struct rte_mempool *clone_pool;
     unsigned nb_mbuf;
+    double time;
+    uint64_t nb_measurements;
 };
 
 void
