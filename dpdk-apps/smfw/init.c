@@ -500,20 +500,12 @@ read_config(const char * file, struct app_config * appconfig) {
 
 		int comp_i = 0;
 
-		/* Link forwarder */
-		for (int fwd_i = 0; fwd_i < appconfig->nb_forwarder; ++fwd_i) {
-			struct forwarder_t * fwd = appconfig->forwarder[fwd_i];
-			// pointing to the same receiver!?
-			if (fwd->rx != receiver) {
-				continue;
-			}
-			receiver->args[comp_i] = fwd;
-			receiver->handler[comp_i] = forwarder_receive_pkt;
-			fwd->rx = receiver;
-			receiver->nb_handler += 1;
-
-			++comp_i;
-		}
+		/*
+		 * Link order is imoportant.
+		 * counter received packets first. So he has enough time to register them.
+		 * Packets are faster forwarded to the FW and received than they are registered.
+		 * registation runs an an other thread.
+		 */
 
 		/* Link counter */
 		for (int cntr_i = 0; cntr_i < appconfig->nb_counter; ++cntr_i) {
@@ -531,6 +523,21 @@ read_config(const char * file, struct app_config * appconfig) {
 				receiver->nb_handler += 1;
 				comp_i += 1;
 			}
+		}
+
+		/* Link forwarder */
+		for (int fwd_i = 0; fwd_i < appconfig->nb_forwarder; ++fwd_i) {
+			struct forwarder_t * fwd = appconfig->forwarder[fwd_i];
+			// pointing to the same receiver!?
+			if (fwd->rx != receiver) {
+				continue;
+			}
+			receiver->args[comp_i] = fwd;
+			receiver->handler[comp_i] = forwarder_receive_pkt;
+			fwd->rx = receiver;
+			receiver->nb_handler += 1;
+
+			++comp_i;
 		}
 	}
 	/*
