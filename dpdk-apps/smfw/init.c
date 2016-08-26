@@ -34,6 +34,8 @@
 #define RTE_TEST_RX_DESC_DEFAULT 128
 #define RTE_TEST_TX_DESC_DEFAULT 512
 
+#define MBUF_SIZE 1700
+
 static uint16_t nb_rxd = RTE_TEST_RX_DESC_DEFAULT;
 static uint16_t nb_txd = RTE_TEST_TX_DESC_DEFAULT;
 
@@ -133,15 +135,31 @@ struct rte_mempool *
 create_pool(unsigned size) {
 	RTE_LOG(INFO, MEM_INIT, "Create mempool %"PRIu32"\n", size);
 	char name[128];
-	sprintf(name, "mbuf_pool_%i", rand());
+	sprintf(name, "mbufpkt_pool_%i", rand());
 	
 	struct rte_mempool *pktmbuf_pool = rte_pktmbuf_pool_create(name, size, 32,
-										0, size, rte_socket_id());
+										0, MBUF_SIZE, rte_socket_id());
 	if (pktmbuf_pool == NULL) {
 		RTE_LOG(ERR, MEM_INIT, "Mempool Creation Failed. Enough memory?\n");
 		die();
 	}
 	return pktmbuf_pool;
+}
+
+struct rte_mempool *
+create_clone_pool(unsigned size) {
+	RTE_LOG(INFO, MEM_INIT, "Create mempool %"PRIu32"\n", size);
+	char name[128];
+	sprintf(name, "mbufclone_pool_%i", rand());
+	
+	struct rte_mempool *clone_pool = rte_pktmbuf_pool_create(name, size, 32,
+                0, 0, rte_socket_id());
+
+	if (clone_pool == NULL) {
+		RTE_LOG(ERR, MEM_INIT, "Mempool Creation Failed. Enough memory?\n");
+		die();
+	}
+	return clone_pool;
 }
 
 int
@@ -383,7 +401,8 @@ read_config(const char * file, struct app_config * appconfig) {
 		RTE_LOG(ERR, CONFIG, "Could not read %s.\n", CN_LOG_POOL_SIZE);
 		return 1;
 	}
-	appconfig->mempool = create_pool((1 << pool_size) - 1);
+	appconfig->pkt_pool = create_pool((1 << pool_size) - 1);
+	appconfig->clone_pool = create_clone_pool((1 << pool_size) - 1);
 
 	/*
 	 * Port set up
@@ -394,7 +413,7 @@ read_config(const char * file, struct app_config * appconfig) {
 			RTE_LOG(INFO, CONFIG, "Skipp port %"PRIu32".\n", i);
 			continue;
 		}
-		int status = initialize_port(i, appconfig->mempool, 1, 1);
+		int status = initialize_port(i, appconfig->pkt_pool, 1, 1);
 		if (status != 0) {
 			RTE_LOG(ERR, CONFIG, "Initialization of port %"PRIu32" failed.\n", i);
 			config_destroy(config);

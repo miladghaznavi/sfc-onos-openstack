@@ -102,7 +102,7 @@ counter_register_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 			continue;
 		}
 
-		bulk[nb_registered] = rte_pktmbuf_clone(buffer[i], counter->pool);
+		bulk[nb_registered] = rte_pktmbuf_clone(buffer[i], counter->clone_pool);
 		counter->nb_mbuf++;
 
 		if (bulk[nb_registered] == NULL) {
@@ -375,7 +375,8 @@ get_counter(config_setting_t *c_conf,
 	counter->pkts_send = 0;
 	counter->pkts_dropped = 0;
 	counter->pkts_timedout = 0;
-	counter->pool = appconfig->mempool;
+	counter->pool = appconfig->pkt_pool;
+	counter->clone_pool = appconfig->clone_pool;
 	counter->nb_mbuf = 0;
 
 	return 0;

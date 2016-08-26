@@ -152,8 +152,8 @@ get_forwarder(config_setting_t *f_conf,
 	forwarder->pkts_dropped = 0;
 	forwarder->nb_mbuf = 0;
 
-	forwarder->pkt_pool = appconfig->mempool;
-	forwarder->clone_pool = appconfig->mempool;
+	forwarder->pkt_pool = appconfig->pkt_pool;
+	forwarder->clone_pool = appconfig->clone_pool;
 
 	forwarder->eth_hdr = rte_pktmbuf_alloc(forwarder->pkt_pool);
 	forwarder->eth_hdr->data_len = sizeof(struct ether_hdr);

@@ -19,7 +19,6 @@ log_receiver(struct receiver_t *receiver) {
     RTE_LOG(INFO, RECEIVER, "| In port:          %"PRIu32"\n", receiver->in_port);
     RTE_LOG(INFO, RECEIVER, "| MAC:              "FORMAT_MAC"\n", ARG_V_MAC(receiver->mac));
     RTE_LOG(INFO, RECEIVER, "| Packets received: %"PRIu64"\n", receiver->pkts_received);
-    RTE_LOG(INFO, RECEIVER, "| mbufs:            %"PRIu32"\n", receiver->nb_mbuf);
     RTE_LOG(INFO, RECEIVER, "------------------------------------\n");
 }
 

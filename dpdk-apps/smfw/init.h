@@ -39,7 +39,8 @@ struct app_config {
 	unsigned nb_ports;
 	unsigned enabled_ports;
 
-	struct rte_mempool *mempool;
+	struct rte_mempool *pkt_pool;
+	struct rte_mempool *clone_pool;
 
 	unsigned nb_cores;
 	struct core_config *core_configs;
