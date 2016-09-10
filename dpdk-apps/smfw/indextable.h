@@ -65,7 +65,8 @@ struct indextable {
 	// Stats
 	unsigned long replaced_entries;
 
-	// double linked list of all entries in chronological order. [TAIL| <<older<< | >>newer>> |HEAD]
+	// double linked list of all entries in chronological order.
+	// [TAIL| <<older<< | >>newer>> |HEAD]
 	struct d_list_t tail;
 	struct d_list_t head;
 };
