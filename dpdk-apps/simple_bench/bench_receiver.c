@@ -84,7 +84,6 @@ poll_bench_receiver(struct bench_receiver_t *bench_receiver) {
 					pkts_burst, BURST_SIZE);
 
 	uint64_t sum_duration = 0;
-	unsigned skiped_pkts = 0;
 	unsigned index;
 	
 	for (index = 0; index < nb_rx; ++index) {
@@ -105,7 +104,7 @@ poll_bench_receiver(struct bench_receiver_t *bench_receiver) {
 			bench_receiver->travel_tm += time - first;
 
 		} else {
-			skiped_pkts += 1;
+			bench_receiver->pkts_skiped += 1;
 		}
 		rte_pktmbuf_free(pkts_burst[index]);
 	}
@@ -146,6 +145,7 @@ get_bench_receiver(config_setting_t *br_conf,
 	// init other fields:
 	bench_receiver->pkts_received = 0;
 	bench_receiver->travel_tm = 0;
+	bench_receiver->pkts_skiped = 0;
 
 	log_bench_receiver(bench_receiver);
 	return 0;

@@ -25,6 +25,7 @@ struct bench_receiver_t {
 
     /* Sum of time bench packets traveled. */
     uint64_t travel_tm;
+    uint64_t pkts_skiped;
 
 };
 
