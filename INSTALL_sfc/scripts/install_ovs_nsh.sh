@@ -63,6 +63,7 @@ echos () {
 
 if [ "$nodownload" == "0" ]; then
     echos "Starting to install Openvswitch with support for NSH"
+    git clone https://github.com/yyang13/ovs_nsh_patches.git
     git clone https://github.com/openvswitch/ovs.git
 
     if [ $? -gt 0 ]; then
@@ -74,7 +75,11 @@ fi
 spin
 cd ovs
 spin
-git checkout tags/v2.4.1
+git reset --hard 7d433ae57ebb90cd68e8fa948a096f619ac4e2d8
+spin
+cp ../ovs_nsh_patches/*.patch ./
+spin
+git am *.patch
 
 spin
 echos "Removing old ovs configuration."

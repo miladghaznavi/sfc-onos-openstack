@@ -106,6 +106,36 @@ dnsmasq_dns_servers = 8.8.8.8, 8.8.4.4
 ```
 restart q-dhcp
 
+### /etc/libvirt/qemu.conf
+
+  cgroup_controllers = [ "cpu", "devices", "memory", "blkio", "cpuset", "cpuacct" ]
+
+  cgroup_device_acl = [
+  "/dev/null", "/dev/full", "/dev/zero", "/dev/random",
+  "/dev/urandom", "/dev/ptmx", "/dev/kvm", "/dev/kqemu",
+  "/dev/rtc", "/dev/hpet", "/dev/net/tun", "/mnt/huge",
+  "/dev/vhost-net"
+  ]
+
+  hugetlbfs_mount = "/mnt/huge"
+
+
+### /etc/default/qemu-kvm
+
+  VHOST_NET_ENABLED=1
+  KVM_HUGEPAGES=1
+
+
+### /etc/apparmor.d/abstractions/libvirt-qemu
+
+On ubuntu, without this KVM won't be able to acces hugepages on `/mnt/huge`.
+VM's WILL boot, but all network interfaces won't work.
+
+    owner "/mnt/huge/libvirt/qemu/**" rw,
+    /var/run/openvswitch/** rw,
+    /run/openvswitch/** rw,
+
+
 ### with sed 
 Configure ml2.conf, dhcp_agent.ini, entry_points.txt with sed:
 
@@ -114,7 +144,6 @@ sed -i 's/mechanism_drivers =.*/mechanism_drivers = onos_ml2/g' /etc/neutron/plu
 sed -i '/\[neutron.ml2.mechanism_drivers\]/a onos_ml2 = networking_onos.plugins.ml2.driver:ONOSMechanismDriver' /opt/stack/neutron/neutron*.egg-info/entry_points.txt
 sed -i '/\[neutron.service_plugins\]/a onos_router = networking_onos.plugins.l3.driver:ONOSL3Plugin' /opt/stack/neutron/neutron*.egg-info/entry_points.txt
 sed -i 's/#dnsmasq_dns_servers =.*/dnsmasq_dns_servers = 8.8.8.8, 8.8.4.4/g' /etc/neutron/dhcp_agent.ini
-sed -i 's/cpu_mode =.*/cpu_mode = host-model/g' /etc/nova/nova.conf
 ```
 
 ### for internet connectivity
@@ -195,6 +224,10 @@ neutron port-create --name p13 sfcNet
 neutron port-create --name p14 sfcNet
 neutron port-create --name p15 sfcNet
 neutron port-create --name p16 sfcNet
+neutron port-create --name p17 sfcNet
+neutron port-create --name p18 sfcNet
+neutron port-create --name p19 sfcNet
+neutron port-create --name p20 sfcNet
 
 neutron port-update p01 --no-security-groups --port-security-enabled=False
 neutron port-update p02 --no-security-groups --port-security-enabled=False
@@ -212,6 +245,10 @@ neutron port-update p13 --no-security-groups --port-security-enabled=False
 neutron port-update p14 --no-security-groups --port-security-enabled=False
 neutron port-update p15 --no-security-groups --port-security-enabled=False
 neutron port-update p16 --no-security-groups --port-security-enabled=False
+neutron port-update p17 --no-security-groups --port-security-enabled=False
+neutron port-update p18 --no-security-groups --port-security-enabled=False
+neutron port-update p19 --no-security-groups --port-security-enabled=False
+neutron port-update p20 --no-security-groups --port-security-enabled=False
 
 #nova keypair-delete osKey
 rm ~/.ssh/known_hosts # think twice about this!
@@ -219,61 +256,82 @@ rm osKey.pem
 nova keypair-add osKey > osKey.pem
 chmod 600 osKey.pem
 
-openstack flavor create --ram 2048 --disk 10 --vcpus 1 sf.small
+openstack flavor create --ram 1024 --disk 10 --vcpus 1 sf.small
+#nova flavor-key sf.small set "hw:mem_page_size=large"
 
 nova boot --image ubuntu --flavor sf.small --nic net-name=private \
           --nic port-id=$(neutron port-list |grep p01 |awk '{print $2}') \
-          --key-name osKey --user-data "init.sh" --availability-zone nova:i72tb12 bench
+          --nic port-id=$(neutron port-list |grep p20 |awk '{print $2}') \
+          --key-name osKey --availability-zone nova:i72tb12 bench
 nova boot --image ubuntu --flavor sf.small --nic net-name=private \
           --nic port-id=$(neutron port-list |grep p02 |awk '{print $2}') \
           --nic port-id=$(neutron port-list |grep p03 |awk '{print $2}') \
           --nic port-id=$(neutron port-list |grep p04 |awk '{print $2}') \
-          --key-name osKey --user-data "init.sh" --availability-zone nova:i72tb12 w1
-nova boot --image ubuntu --flavor sf.small --nic net-name=private \
           --nic port-id=$(neutron port-list |grep p05 |awk '{print $2}') \
+          --key-name osKey --availability-zone nova:i72tb12 w1
+nova boot --image ubuntu --flavor sf.small --nic net-name=private \
           --nic port-id=$(neutron port-list |grep p06 |awk '{print $2}') \
           --nic port-id=$(neutron port-list |grep p07 |awk '{print $2}') \
-          --key-name osKey --user-data "init.sh" --availability-zone nova:i72tb11 w2
-nova boot --image ubuntu --flavor sf.small --nic net-name=private \
           --nic port-id=$(neutron port-list |grep p08 |awk '{print $2}') \
           --nic port-id=$(neutron port-list |grep p09 |awk '{print $2}') \
-          --nic port-id=$(neutron port-list |grep p10 |awk '{print $2}') \
-          --key-name osKey --user-data "init.sh" --availability-zone nova:i72tb11 w3
+          --key-name osKey --availability-zone nova:i72tb11 w2
 nova boot --image ubuntu --flavor sf.small --nic net-name=private \
+          --nic port-id=$(neutron port-list |grep p10 |awk '{print $2}') \
           --nic port-id=$(neutron port-list |grep p11 |awk '{print $2}') \
           --nic port-id=$(neutron port-list |grep p12 |awk '{print $2}') \
-          --key-name osKey --user-data "init.sh" --availability-zone nova:i72tb12 fw1
-nova boot --image ubuntu --flavor sf.small --nic net-name=private \
           --nic port-id=$(neutron port-list |grep p13 |awk '{print $2}') \
-          --nic port-id=$(neutron port-list |grep p14 |awk '{print $2}') \
-          --key-name osKey --user-data "init.sh" --availability-zone nova:i72tb11 fw2
+          --key-name osKey --availability-zone nova:i72tb11 w3
 nova boot --image ubuntu --flavor sf.small --nic net-name=private \
+          --nic port-id=$(neutron port-list |grep p14 |awk '{print $2}') \
           --nic port-id=$(neutron port-list |grep p15 |awk '{print $2}') \
+          --key-name osKey --availability-zone nova:i72tb12 fw1
+nova boot --image ubuntu --flavor sf.small --nic net-name=private \
           --nic port-id=$(neutron port-list |grep p16 |awk '{print $2}') \
-          --key-name osKey --user-data "init.sh" --availability-zone nova:i72tb11 fw3
+          --nic port-id=$(neutron port-list |grep p17 |awk '{print $2}') \
+          --key-name osKey --availability-zone nova:i72tb11 fw2
+nova boot --image ubuntu --flavor sf.small --nic net-name=private \
+          --nic port-id=$(neutron port-list |grep p18 |awk '{print $2}') \
+          --nic port-id=$(neutron port-list |grep p19 |awk '{print $2}') \
+          --key-name osKey --availability-zone nova:i72tb11 fw3
 
 neutron port-update --no-security-groups  --port-security-enabled=False \
-        $(neutron port-list |grep 10.0.0.41 |awk '{print $2}') 
+        $(neutron port-list |grep 10.0.0.3 |awk '{print $2}')
 neutron port-update --no-security-groups  --port-security-enabled=False \
-        $(neutron port-list |grep 10.0.0.42 |awk '{print $2}')
+        $(neutron port-list |grep 10.0.0.4 |awk '{print $2}')
 neutron port-update --no-security-groups  --port-security-enabled=False \
-        $(neutron port-list |grep 10.0.0.43 |awk '{print $2}')
+        $(neutron port-list |grep 10.0.0.5 |awk '{print $2}')
 neutron port-update --no-security-groups  --port-security-enabled=False \
-        $(neutron port-list |grep 10.0.0.44 |awk '{print $2}')
+        $(neutron port-list |grep 10.0.0.6 |awk '{print $2}')
 neutron port-update --no-security-groups  --port-security-enabled=False \
-        $(neutron port-list |grep 10.0.0.45 |awk '{print $2}')
+        $(neutron port-list |grep 10.0.0.7 |awk '{print $2}')
 neutron port-update --no-security-groups  --port-security-enabled=False \
-        $(neutron port-list |grep 10.0.0.46 |awk '{print $2}')
+        $(neutron port-list |grep 10.0.0.8 |awk '{print $2}')
 neutron port-update --no-security-groups  --port-security-enabled=False \
-        $(neutron port-list |grep 10.0.0.47 |awk '{print $2}')
+        $(neutron port-list |grep 10.0.0.9 |awk '{print $2}')
+neutron port-update --no-security-groups  --port-security-enabled=False \
+        $(neutron port-list |grep 10.0.0.10 |awk '{print $2}')
+neutron port-update --no-security-groups  --port-security-enabled=False \
+        $(neutron port-list |grep 10.0.0.11 |awk '{print $2}')
+neutron port-update --no-security-groups  --port-security-enabled=False \
+        $(neutron port-list |grep 10.0.0.12 |awk '{print $2}')
+neutron port-update --no-security-groups  --port-security-enabled=False \
+        $(neutron port-list |grep 10.0.0.13 |awk '{print $2}')
+neutron port-update --no-security-groups  --port-security-enabled=False \
+        $(neutron port-list |grep 10.0.0.14 |awk '{print $2}')
+neutron port-update --no-security-groups  --port-security-enabled=False \
+        $(neutron port-list |grep 10.0.0.15 |awk '{print $2}')
+neutron port-update --no-security-groups  --port-security-enabled=False \
+        $(neutron port-list |grep 10.0.0.16 |awk '{print $2}')
+neutron port-update --no-security-groups  --port-security-enabled=False \
+        $(neutron port-list |grep 10.0.0.17 |awk '{print $2}')
 
-nova floating-ip-create public
-nova floating-ip-create public
-nova floating-ip-create public
-nova floating-ip-create public
-nova floating-ip-create public
-nova floating-ip-create public
-nova floating-ip-create public
+nova floating-ip-create public;\
+    nova floating-ip-create public;\
+    nova floating-ip-create public;\
+    nova floating-ip-create public;\
+    nova floating-ip-create public;\
+    nova floating-ip-create public;\
+    nova floating-ip-create public
 
 nova floating-ip-associate bench $(nova floating-ip-list |grep 'public' | sed -n '1p'| awk '{print $4}')
 nova floating-ip-associate w1 $(nova floating-ip-list |grep 'public' | sed -n '2p'| awk '{print $4}')
@@ -310,18 +368,19 @@ sudo ip link set dev eth2 down
 sudo dhclient eth2
 ```
 
-## setup the sfc
+## setup the sfc (wrapper only)
 
 ### port pairs, pair group, Flow classifier, port chain
 ```
-neutron port-pair-create PP1 --ingress p02 --egress p04
-neutron port-pair-create PP2 --ingress p05 --egress p07
-neutron port-pair-create PP3 --ingress p08 --egress p10
-neutron port-pair-group-create --port-pair PP1 PPG1
-neutron port-pair-group-create --port-pair PP2 PPG2
-neutron port-pair-group-create --port-pair PP3 PPG3
-neutron flow-classifier-create --source-ip-prefix 10.1.0.3/24 --destination-ip-prefix 10.1.0.8/24 --logical-source-port p01 FC1
-neutron port-chain-create --port-pair-group PPG1 --port-pair-group PPG2  --port-pair-group PPG3 --flow-classifier FC1 PC1
+neutron port-pair-create PP_W1 --ingress p02 --egress p04 # w1
+neutron port-pair-group-create --port-pair PP_W1 PPG_W1
+neutron port-pair-create PP_W2 --ingress p06 --egress p08 # w2
+neutron port-pair-group-create --port-pair PP_W2 PPG_W2
+neutron port-pair-create PP_W3 --ingress p10 --egress p12 # w3
+neutron port-pair-group-create --port-pair PP_W3 PPG_W3
+
+neutron flow-classifier-create --source-ip-prefix 10.1.0.0/24 --destination-ip-prefix 10.1.0.0/24 --logical-source-port p01 FC1
+neutron port-chain-create --port-pair-group PPG_W1 --port-pair-group PPG_W2  --port-pair-group PPG_W3 --flow-classifier FC1 PC1
 ```
 
 --chain-parameters correlation=NSH
@@ -331,10 +390,52 @@ neutron port-chain-create --port-pair-group PPG1 --port-pair-group PPG2  --port-
 ```
 neutron port-chain-delete PC1
 neutron flow-classifier-delete FC1
-neutron port-pair-group-delete PPG1
-neutron port-pair-group-delete PPG2
-neutron port-pair-group-delete PPG3
-neutron port-pair-delete PP1
-neutron port-pair-delete PP2
-neutron port-pair-delete PP3
+neutron port-pair-group-delete PPG_W1
+neutron port-pair-group-delete PPG_W2
+neutron port-pair-group-delete PPG_W3
+neutron port-pair-delete PP_W1
+neutron port-pair-delete PP_W2
+neutron port-pair-delete PP_W3
+```
+
+## sfc wrapper and firewall
+
+```
+# -> w1 -> fw
+neutron port-pair-create PP_W11 --ingress p02 --egress p03
+neutron port-pair-group-create --port-pair PP_W11 PPG_W11
+# fw1 to w1
+neutron port-pair-create PP_FW1 --ingress p14 --egress p15
+neutron port-pair-group-create --port-pair PP_FW1 PPG_FW1
+# w1 to w2
+neutron port-pair-create PP_W12 --ingress p04 --egress p05
+neutron port-pair-group-create --port-pair PP_W12 PPG_W12
+
+# w2 to fw
+neutron port-pair-create PP_W21 --ingress p06 --egress p07
+neutron port-pair-group-create --port-pair PP_W21 PPG_W21
+# fw2 to w3
+neutron port-pair-create PP_FW2 --ingress p16 --egress p17
+neutron port-pair-group-create --port-pair PP_FW2 PPG_FW2
+# w2 to w3
+neutron port-pair-create PP_W22 --ingress p08 --egress p09
+neutron port-pair-group-create --port-pair PP_W22 PPG_W22
+
+# w3 to fw
+neutron port-pair-create PP_W31 --ingress p10 --egress p11
+neutron port-pair-group-create --port-pair PP_W31 PPG_W31
+# fw3 to w3
+neutron port-pair-create PP_FW3 --ingress p18 --egress p19
+neutron port-pair-group-create --port-pair PP_FW3 PPG_FW3
+# w3 to end
+neutron port-pair-create PP_W32 --ingress p12 --egress p13
+neutron port-pair-group-create --port-pair PP_W32 PPG_W32
+
+neutron flow-classifier-create --source-ip-prefix 10.1.0.0/24 \
+    --destination-ip-prefix 10.1.0.0/24 --logical-source-port p01 FC1
+
+neutron port-chain-create --flow-classifier FC1 PC1 \
+    --port-pair-group PPG_W11 --port-pair-group PPG_FW1  --port-pair-group PPG_W12 \
+    --port-pair-group PPG_W21 --port-pair-group PPG_FW2  --port-pair-group PPG_W22 \
+    --port-pair-group PPG_W31 --port-pair-group PPG_FW3  --port-pair-group PPG_W32
 ```
