@@ -101,32 +101,37 @@ tear_down(struct app_config *app_config) {
     free(app_config);
 }
 
-static void*
-print_stats(void *dummy) {
+static void
+print_stats(void) {
 
+    /* Clear screen and move to top left */
+    const char clr[] = { 27, '[', '2', 'J', '\0' };
+    const char topLeft[] = { 27, '[', '1', ';', '1', 'H','\0' };
+    printf("%s%s", clr, topLeft);
+
+    /* log bench packet sender. */
+    for (unsigned i = 0; i < appconfig->nb_bench_sender; i++) {
+        log_bench_sender(appconfig->bench_senders[i]);
+    }
+
+    /* log bench packet receiver. */
+    for (unsigned i = 0; i < appconfig->nb_bench_receiver; i++) {
+        log_bench_receiver(appconfig->bench_receivers[i]);
+    }
+
+    /* log bench packet forwarder. */
+    for (unsigned i = 0; i < appconfig->nb_bench_forwarder; i++) {
+        log_bench_forwarder(appconfig->bench_forwarders[i]);
+    }
+
+    RTE_LOG(INFO, MAIN, "mbufs: %"PRIu32"\n", rte_mempool_count(appconfig->mempool));
+}
+
+static void*
+print_stats_loop(void *dummy) {
     while (running) {
         nanosleep((const struct timespec[]){{2, 0}}, NULL);
-
-        /* Clear screen and move to top left */
-        const char clr[] = { 27, '[', '2', 'J', '\0' };
-        const char topLeft[] = { 27, '[', '1', ';', '1', 'H','\0' };
-        printf("%s%s", clr, topLeft);
-
-
-        /* log bench packet sender. */
-        for (unsigned i = 0; i < appconfig->nb_bench_sender; i++) {
-            log_bench_sender(appconfig->bench_senders[i]);
-        }
-
-        /* log bench packet receiver. */
-        for (unsigned i = 0; i < appconfig->nb_bench_receiver; i++) {
-            log_bench_receiver(appconfig->bench_receivers[i]);
-        }
-
-        /* log bench packet forwarder. */
-        for (unsigned i = 0; i < appconfig->nb_bench_forwarder; i++) {
-            log_bench_forwarder(appconfig->bench_forwarders[i]);
-        }
+        print_stats();
     }
 }
 
@@ -178,7 +183,7 @@ main(int argc, char *argv[]) {
     
     // RTE_LOG(INFO, MAIN, "Start stat thread.\n");
     pthread_t stat;
-    pthread_create(&stat, NULL, print_stats, NULL);
+    pthread_create(&stat, NULL, print_stats_loop, NULL);
 
     /* run main loop on master core */
     RTE_LOG(INFO, MAIN, "Start main loop on master core.\n");
@@ -200,7 +205,7 @@ main(int argc, char *argv[]) {
     }
     RTE_LOG(INFO, MAIN, " done.\n");
 
-    print_stats(NULL);
+    print_stats();
 
     /* free all used memory space and exit */
     tear_down(appconfig);

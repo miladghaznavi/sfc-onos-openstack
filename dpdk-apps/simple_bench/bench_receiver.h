@@ -7,14 +7,18 @@
 
 #include <rte_ether.h>
 
+#include "types.h"
+
 struct bench_receiver_t {
     /** Port on which we receive packets to replicate */
     unsigned input_port;
     unsigned core_id;
     unsigned udp_in_port;
 
-    char *file_name;
-    FILE *log_fd;
+    size_t cur_seq;
+    size_t nb_file_names;
+    char **file_names;
+    FILE *cur_log_fd;
 
     /*  
      * Fields for statistics
@@ -24,7 +28,9 @@ struct bench_receiver_t {
     uint64_t pkts_received;
 
     /* Sum of time bench packets traveled. */
-    uint64_t travel_tm;
+    u_second_t travel_tm;
+
+    /* Number of unknown packets received. */
     uint64_t pkts_skiped;
 
 };

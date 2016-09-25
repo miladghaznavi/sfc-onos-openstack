@@ -23,7 +23,11 @@
 #define CN_DST_UPD_PORT     "dst_udp_port"
 
 #define CN_PKT_INTERVAL		"packet_interval"
+#define CN_SEQUENCE         "sequence"
+#define CN_PACKET_NB        "packet_nb"
+#define CN_PACKET_SIZE      "packet_size"
 
-#define CN_LOG_FILE			"log_file"
+#define CN_LOG_FILES		"sequence_log_name"
+
 
 #endif /* CONFIG_H_ */
