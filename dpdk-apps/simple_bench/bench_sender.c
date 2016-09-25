@@ -100,19 +100,24 @@ poll_bench_sender(struct bench_sender_t *bench_sender) {
 		send_vals[0] = sequence->nb_packets_send;
 		send_vals[1] = time;
 
-		// if last packet, send end sequence code
-		if (sequence->nb_packets_send+1 >= sequence->nb_packets) {
+		// if last packet, wait, send end sequence code, wait
+		if (sequence->nb_packets_send+1 == sequence->nb_packets) {
+			bench_sender->wait = ms_to_us(s_to_ms(2));
+        	bench_sender->last_poll = time;
+        	sequence->nb_packets_send++;
+        	return;
+        } else if (sequence->nb_packets_send+1 >= sequence->nb_packets) {
 			send_vals[0] = STOP_SEQ;
-		}
+        }
 
 		int send = send_packet(bench_sender, (char*) &send_vals, sizeof(time) *2);
 
 		// if packet was send
 		if (send_vals[0] == STOP_SEQ && send > 0) {
 			bench_sender->cur_sequence++;
-			bench_sender->wait = ms_to_us(s_to_ms(4));
+			bench_sender->wait = ms_to_us(s_to_ms(2));
 		}
-        bench_sender->wait = ms_to_us(sequence->packet_interval);
+        bench_sender->wait = sequence->packet_interval;
         bench_sender->last_poll = time;
 	}
 }
@@ -127,7 +132,7 @@ log_bench_sender(struct bench_sender_t *bs) {
 	RTE_LOG(INFO, BENCH_SENDER, "| Source IP:           "FORMAT_IP"\n", ARG_V_IP(bs->src_ip));
 	RTE_LOG(INFO, BENCH_SENDER, "| Destination IP:      "FORMAT_IP"\n", ARG_V_IP(bs->dst_ip));
 	RTE_LOG(INFO, BENCH_SENDER, "| UDP estination port: %"PRIu16"\n", bs->dst_udp_port);
-	// RTE_LOG(INFO, BENCH_SENDER, "| Packet interval:     %"PRIu64"ms\n", bs->packet_interval);
+	// RTE_LOG(INFO, BENCH_SENDER, "| Packet interval:     %"PRIu64"us\n", bs->packet_interval);
 	RTE_LOG(INFO, BENCH_SENDER, "| Packet send:         %"PRIu64"\n", bs->pkts_send);
 	RTE_LOG(INFO, BENCH_SENDER, "| Sequence:            %"PRIu64"\n", bs->cur_sequence);
 	RTE_LOG(INFO, BENCH_SENDER, "----------------------------------------\n");

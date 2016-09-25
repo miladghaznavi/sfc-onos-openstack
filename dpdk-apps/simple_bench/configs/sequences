@@ -1,0 +1,231 @@
+#
+#          2000 Pakete/s; 100-1400 Byte; 100K pakete pro sequenze
+#
+       sequence = (
+            {
+                packet_interval = 500;
+                packet_nb = 100000;
+                packet_size = 100;
+            },{
+                packet_interval = 500;
+                packet_nb = 100000;
+                packet_size = 200;
+            },{
+                packet_interval = 500;
+                packet_nb = 100000;
+                packet_size = 300;
+            },{
+                packet_interval = 500;
+                packet_nb = 100000;
+                packet_size = 400;
+            },{
+                packet_interval = 500;
+                packet_nb = 100000;
+                packet_size = 500;
+            },{
+                packet_interval = 500;
+                packet_nb = 100000;
+                packet_size = 600;
+            },{
+                packet_interval = 500;
+                packet_nb = 100000;
+                packet_size = 700;
+            },{
+                packet_interval = 500;
+                packet_nb = 100000;
+                packet_size = 800;
+            },{
+                packet_interval = 500;
+                packet_nb = 100000;
+                packet_size = 900;
+            },{
+                packet_interval = 500;
+                packet_nb = 100000;
+                packet_size = 1000;
+            },{
+                packet_interval = 500;
+                packet_nb = 100000;
+                packet_size = 1100;
+            },{
+                packet_interval = 500;
+                packet_nb = 100000;
+                packet_size = 1200;
+            },{
+                packet_interval = 500;
+                packet_nb = 100000;
+                packet_size = 1300;
+            },{
+                packet_interval = 500;
+                packet_nb = 100000;
+                packet_size = 1400;
+            }
+        )
+        sequence_log_name = [
+            "100K@500us100bit.csv",
+            "100K@500us200bit.csv",
+            "100K@500us300bit.csv",
+            "100K@500us400bit.csv",
+            "100K@500us500bit.csv",
+            "100K@500us600bit.csv",
+            "100K@500us700bit.csv",
+            "100K@500us800bit.csv",
+            "100K@500us900bit.csv",
+            "100K@500us1000bit.csv",
+            "100K@500us1100bit.csv",
+            "100K@500us1200bit.csv",
+            "100K@500us1300bit.csv",
+            "100K@500us1400bit.csv"
+        ];
+
+#
+#          10000000 Pakete/s; 100-1400 Byte; 10M pakete pro sequenze
+# (wie  bei jeitner)
+       sequence = (
+            {
+                packet_interval = 1;
+                packet_nb = 10000000;
+                packet_size = 100;
+            },{
+                packet_interval = 1;
+                packet_nb = 10000000;
+                packet_size = 200;
+            },{
+                packet_interval = 1;
+                packet_nb = 10000000;
+                packet_size = 300;
+            },{
+                packet_interval = 1;
+                packet_nb = 10000000;
+                packet_size = 400;
+            },{
+                packet_interval = 1;
+                packet_nb = 10000000;
+                packet_size = 500;
+            },{
+                packet_interval = 1;
+                packet_nb = 10000000;
+                packet_size = 600;
+            },{
+                packet_interval = 1;
+                packet_nb = 10000000;
+                packet_size = 700;
+            },{
+                packet_interval = 1;
+                packet_nb = 10000000;
+                packet_size = 800;
+            },{
+                packet_interval = 1;
+                packet_nb = 10000000;
+                packet_size = 900;
+            },{
+                packet_interval = 1;
+                packet_nb = 10000000;
+                packet_size = 1000;
+            },{
+                packet_interval = 1;
+                packet_nb = 10000000;
+                packet_size = 1100;
+            },{
+                packet_interval = 1;
+                packet_nb = 10000000;
+                packet_size = 1200;
+            },{
+                packet_interval = 1;
+                packet_nb = 10000000;
+                packet_size = 1300;
+            },{
+                packet_interval = 1;
+                packet_nb = 10000000;
+                packet_size = 1400;
+            }
+        )
+        sequence_log_name = [
+            "10M@1us100bit.csv",
+            "10M@1us200bit.csv",
+            "10M@1us300bit.csv",
+            "10M@1us400bit.csv",
+            "10M@1us500bit.csv",
+            "10M@1us600bit.csv",
+            "10M@1us700bit.csv",
+            "10M@1us800bit.csv",
+            "10M@1us900bit.csv",
+            "10M@1us1000bit.csv",
+            "10M@1us1100bit.csv",
+            "10M@1us1200bit.csv",
+            "10M@1us1300bit.csv",
+            "10M@1us1400bit.csv"
+        ];
+
+#       MAX send intervall
+#          200-10000000 Pakete/s; 1400 Byte; 100K pakete pro sequenze
+#
+       sequence = (
+            {
+                packet_interval = 1000;
+                packet_nb = 10000;
+                packet_size = 1400;
+            },            {
+                packet_interval = 500;
+                packet_nb = 100000;
+                packet_size = 1400;
+            },{
+                packet_interval = 450;
+                packet_nb = 100000;
+                packet_size = 1400;
+            },{
+                packet_interval = 400;
+                packet_nb = 100000;
+                packet_size = 1400;
+            },{
+                packet_interval = 350;
+                packet_nb = 100000;
+                packet_size = 1400;
+            },{
+                packet_interval = 300;
+                packet_nb = 100000;
+                packet_size = 1400;
+            },{
+                packet_interval = 250;
+                packet_nb = 100000;
+                packet_size = 1400;
+            },{
+                packet_interval = 200;
+                packet_nb = 100000;
+                packet_size = 1400;
+            },{
+                packet_interval = 150;
+                packet_nb = 100000;
+                packet_size = 1400;
+            },{
+                packet_interval = 100;
+                packet_nb = 100000;
+                packet_size = 1400;
+            },{
+                packet_interval = 50;
+                packet_nb = 100000;
+                packet_size = 1400;
+            },{
+                packet_interval = 25;
+                packet_nb = 100000;
+                packet_size = 1400;
+            },{
+                packet_interval = 10;
+                packet_nb = 100000;
+                packet_size = 1400;
+            }
+        )
+        sequence_log_name = [
+            "10K_1000us_1400bit.csv",
+            "100K_450us_1400bit.csv",
+            "100K_400us_1400bit.csv",
+            "100K_350us_1400bit.csv",
+            "100K_300us_1400bit.csv",
+            "100K_250us_1400bit.csv",
+            "100K_200us_1400bit.csv",
+            "100K_150us_1400bit.csv",
+            "100K_100us_1400bit.csv",
+            "100K_50us_1400bit.csv",
+            "100K_25us_1400bit.csv",
+            "100K_10us_1400bit.csv"
+        ];
+
