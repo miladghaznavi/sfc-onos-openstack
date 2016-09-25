@@ -25,7 +25,7 @@ forwarder_receive_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 	unsigned nb_tx = 0;
 
 	for (unsigned pkt_i = 0; pkt_i < nb_rx; ++pkt_i) {
-        clock_t start = clock(), diff;
+		clock_t start = clock(), diff;
 
 		struct ether_hdr *eth_old = rte_pktmbuf_mtod(buffer[pkt_i], struct ether_hdr *);
 	
@@ -65,12 +65,16 @@ forwarder_receive_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 		// print_packet_hex(header);
 
 		// send chained packet:
-		forwarder->pkts_send += tx_put(forwarder->tx, &header, 1);
+		int send = 0;
+		while (send == 0) {
+			send = tx_put(forwarder->tx, &header, 1);
+		}
+		forwarder->pkts_send += send;
 		forwarder->nb_mbuf -= 2;
 
-        diff = clock() - start;
-        forwarder->time += diff * 1000.0 / CLOCKS_PER_SEC;
-        forwarder->nb_measurements += 1;
+		diff = clock() - start;
+		forwarder->time += diff * 1000.0 / CLOCKS_PER_SEC;
+		forwarder->nb_measurements += 1;
 	}
 }
 
@@ -84,7 +88,7 @@ log_forwarder(struct forwarder_t *f) {
 	RTE_LOG(INFO, FORWARDER, "| Packets received: %"PRIu64"\n", f->pkts_received);
 	RTE_LOG(INFO, FORWARDER, "| Packets send:     %"PRIu64"\n", f->pkts_send);
 	RTE_LOG(INFO, FORWARDER, "| Packets dropped:  %"PRIu64"\n", f->pkts_dropped);
-    RTE_LOG(INFO, FORWARDER, "| Time:             %f\n", f->time/f->nb_measurements);
+	RTE_LOG(INFO, FORWARDER, "| Time:             %f\n", f->time/f->nb_measurements);
 	RTE_LOG(INFO, FORWARDER, "-------------------------------------\n");
 }
 
@@ -117,7 +121,7 @@ get_forwarder(config_setting_t *f_conf,
 
 	if (sender_i > appconfig->nb_sender) {
 		RTE_LOG(ERR, FORWARDER, "Sender index out of bounds. (%"PRIu32" of %"PRIu32" )\n", sender_i, appconfig->nb_sender);
-	   return 1;
+		return 1;
 	}
 	forwarder->tx = appconfig->sender[sender_i];
 
@@ -156,13 +160,17 @@ get_forwarder(config_setting_t *f_conf,
 	forwarder->pkts_send = 0;
 	forwarder->pkts_dropped = 0;
 	forwarder->nb_mbuf = 0;
-    forwarder->time = 0.0;
-    forwarder->nb_measurements = 0.0;
+	forwarder->time = 0.0;
+	forwarder->nb_measurements = 0.0;
 
 	forwarder->pkt_pool = appconfig->pkt_pool;
 	forwarder->clone_pool = appconfig->clone_pool;
 
 	forwarder->eth_hdr = rte_pktmbuf_alloc(forwarder->pkt_pool);
+	if (forwarder->eth_hdr == NULL) {
+		RTE_LOG(ERR, FORWARDER, "Could not alloc pktmbuf.\n");
+		return 1;
+	}
 	forwarder->eth_hdr->data_len = sizeof(struct ether_hdr);
 
 	struct ether_hdr *eth = rte_pktmbuf_mtod(forwarder->eth_hdr, struct ether_hdr *);
@@ -171,6 +179,5 @@ get_forwarder(config_setting_t *f_conf,
 	ether_addr_copy(&forwarder->send_port_mac, &eth->s_addr);
 	ether_addr_copy(&forwarder->dst_mac, &eth->d_addr);
 	print_packet_hex(forwarder->eth_hdr);
-
 	return 0;
 }

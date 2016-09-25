@@ -233,7 +233,7 @@ read_core_config(struct app_config * appconfig, config_t * config, struct core_c
 
 	if (appconfig->nb_cores != rte_lcore_count()) {
 		RTE_LOG(ERR, CONFIG, "lcore count is unequal to core count in config."
-			    " in config: %"PRIu32" but got: %"PRIu32".\n", appconfig->nb_cores, rte_lcore_count());
+				" in config: %"PRIu32" but got: %"PRIu32".\n", appconfig->nb_cores, rte_lcore_count());
 		config_destroy(config);
 		free(config);
 		return 1;
@@ -464,7 +464,6 @@ read_config(const char * file, struct app_config * appconfig) {
 		unsigned receiver_i = core_configs[core_id].nb_receiver;
 		core_configs[core_id].receiver[receiver_i] = appconfig->receiver[port_index];
 		core_configs[core_id].nb_receiver += 1;
-
 
 		port_index += 1;
 	}
