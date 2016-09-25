@@ -9,7 +9,7 @@
 #include <rte_log.h>
 #include <rte_ether.h>
 
-#define BURST_SIZE 32
+#define BURST_SIZE 128
 
 #define RTE_LOGTYPE_RECEIVER RTE_LOGTYPE_USER1
 
@@ -26,7 +26,7 @@ log_receiver(struct receiver_t *receiver) {
 void
 poll_receiver(struct receiver_t *receiver) {
     const uint16_t port = receiver->in_port;
-    struct rte_mbuf *pkts_burst[BURST_SIZE];
+    struct rte_mbuf **pkts_burst = receiver->burst_buffer;
 
     unsigned nb_rx = rte_eth_rx_burst((uint8_t) port, 0,
                     pkts_burst, BURST_SIZE);
@@ -55,6 +55,8 @@ init_receiver(unsigned core_id, unsigned in_port,
 
     receiver->nb_handler = 0;
     receiver->pkts_received = 0;
+    
+    receiver->burst_buffer = malloc(BURST_SIZE * sizeof(void*));
 
     rte_eth_macaddr_get(receiver->in_port, &receiver->mac);
 }

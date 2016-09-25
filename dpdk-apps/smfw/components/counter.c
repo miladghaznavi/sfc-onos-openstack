@@ -32,8 +32,11 @@ fwd_to_wrapper(struct counter_t *counter, struct rte_mbuf *m, struct metadata_t 
 	if (!counter->decap_on_send) {
 		wrapper_add_data(m, meta);
 	}
-	counter->pkts_send += 1;
-	tx_put(counter->tx, &m, 1);
+	int send = tx_put(counter->tx, &m, 1);
+	while (send == 0) {
+		send = tx_put(counter->tx, &m, 1);
+	}
+	counter->pkts_send += send;
 	counter->nb_mbuf--;
 }
 
