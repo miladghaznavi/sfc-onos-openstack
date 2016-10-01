@@ -8,6 +8,7 @@
 
 #include <stdlib.h>
 
+#include <rte_malloc.h>
 #include <rte_mbuf.h>
 #include <rte_ethdev.h>
 #include <rte_ether.h>
@@ -20,6 +21,8 @@
 void
 forwarder_receive_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 	if (nb_rx == 0) return;
+
+	clock_t start = clock(), diff;
 
 	struct forwarder_t *forwarder = (struct forwarder_t *) arg;
 	forwarder->pkts_received += nb_rx;
@@ -40,7 +43,7 @@ forwarder_receive_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 		struct rte_mbuf *m_clone = rte_pktmbuf_clone(buffer[pkt_i], forwarder->clone_pool);
 		struct rte_mbuf *header = rte_pktmbuf_clone(forwarder->eth_hdr, forwarder->clone_pool);
 	
-		if (m_clone == NULL) {
+		if (m_clone == NULL || header == NULL) {
 			RTE_LOG(ERR, FORWARDER, "Could not clone packet! Mempool empty?\n");
 			forwarder->pkts_dropped += 1;
 			continue;
@@ -50,23 +53,22 @@ forwarder_receive_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 			wrapper_remove_data(m_clone);
 		}
 
-		// // remove ether header
+		// remove ether header
 		rte_pktmbuf_adj(m_clone, sizeof(struct ether_hdr));
 
-		// // prepend new ether header:
+		// prepend new ether header:
 		rte_pktmbuf_chain(header, m_clone);
 
 		// send chained packet:		
 		forwarder->send_buf[send_i] = header;
 		send_i += 1;
 	}
-	clock_t start = clock(), diff;
 
 	if (send_i > 0) {
 		int send = rte_eth_tx_burst(forwarder->tx->port, forwarder->tx->queue, forwarder->send_buf, send_i);
 		forwarder->pkts_send += send;
 	}
-
+	
 	diff = clock() - start;
 	forwarder->time += diff * 1000.0 / CLOCKS_PER_SEC;
 	forwarder->nb_measurements += nb_rx;
@@ -157,7 +159,7 @@ get_forwarder(config_setting_t *f_conf,
 	forwarder->time = 0.0;
 	forwarder->nb_measurements = 0.0;
 
-	forwarder->send_buf = malloc(sizeof(struct rte_mbuf*) * BURST_SIZE);
+	forwarder->send_buf = rte_malloc(NULL, sizeof(struct rte_mbuf*) * BURST_SIZE, 64);
 	forwarder->pkt_pool = appconfig->pkt_pool;
 	forwarder->clone_pool = appconfig->clone_pool;
 

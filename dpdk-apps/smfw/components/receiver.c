@@ -6,6 +6,7 @@
 #include <libconfig.h>
 #include <time.h>
 
+#include <rte_malloc.h>
 #include <rte_log.h>
 #include <rte_ether.h>
 
@@ -19,8 +20,11 @@ log_receiver(struct receiver_t *receiver) {
     RTE_LOG(INFO, RECEIVER, "| In port:          %"PRIu32"\n", receiver->in_port);
     RTE_LOG(INFO, RECEIVER, "| MAC:              "FORMAT_MAC"\n", ARG_V_MAC(receiver->mac));
     RTE_LOG(INFO, RECEIVER, "| Packets received: %"PRIu64"\n", receiver->pkts_received);
-    RTE_LOG(INFO, RECEIVER, "| Load:             %"PRIu64"\n", receiver->nb_rec);
+    if (receiver->nb_polls != 0)
+        RTE_LOG(INFO, RECEIVER, "| Load:             %"PRIu64"\n", receiver->nb_rec / receiver->nb_polls);
+    // RTE_LOG(INFO, RECEIVER, "| Time:             %f\n", receiver->time/receiver->nb_measurements);
     RTE_LOG(INFO, RECEIVER, "------------------------------------\n");
+
     receiver->nb_polls = 0;
     receiver->nb_rec = 0;
 }
@@ -30,13 +34,16 @@ poll_receiver(struct receiver_t *receiver) {
     const uint16_t port = receiver->in_port;
     struct rte_mbuf **pkts_burst = receiver->burst_buffer;
 
+    // clock_t start = clock(), diff;
+
     unsigned nb_rx = rte_eth_rx_burst((uint8_t) port, 0,
                     pkts_burst, BURST_SIZE);
 
+
     receiver->pkts_received += nb_rx;
-    receiver->nb_polls++;
-    if (nb_rx == BURST_SIZE)
-        receiver->nb_rec += 1;
+    if (nb_rx != 0)
+        receiver->nb_polls++;
+    receiver->nb_rec += nb_rx;
 
     for (unsigned h_index = 0; h_index < receiver->nb_handler; ++h_index) {
         /* handover packet to handler. */
@@ -50,6 +57,10 @@ poll_receiver(struct receiver_t *receiver) {
         //     rte_pktmbuf_free(pkts_burst[p_index]);
         // }
     }
+
+    // diff = clock() - start;
+    // receiver->time += diff * 1000.0 / CLOCKS_PER_SEC;
+    // receiver->nb_measurements += nb_rx;
 }
 
 void
@@ -64,7 +75,7 @@ init_receiver(unsigned core_id, unsigned in_port,
     receiver->nb_rec = 0;
     receiver->pkts_received = 0;
     
-    receiver->burst_buffer = malloc(BURST_SIZE * sizeof(void*));
+    receiver->burst_buffer = rte_malloc(NULL, BURST_SIZE * sizeof(void*), 64);
 
     rte_eth_macaddr_get(receiver->in_port, &receiver->mac);
 }

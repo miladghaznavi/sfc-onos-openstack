@@ -12,6 +12,7 @@
 
 #include <libconfig.h>
 
+#include <rte_malloc.h>
 #include <rte_common.h>
 #include <rte_cycles.h>
 #include <rte_eal.h>
@@ -225,7 +226,7 @@ config_fail(config_t * config) {
 	RTE_LOG(ERR, CONFIG, "Could not read config file: \n\tLine %i : %s\n",
 	config_error_line(config), config_error_text(config));
 	config_destroy(config);
-	free(config);
+	rte_free(config);
 }
 
 static int
@@ -235,7 +236,7 @@ read_core_config(struct app_config * appconfig, config_t * config, struct core_c
 		RTE_LOG(ERR, CONFIG, "lcore count is unequal to core count in config."
 				" in config: %"PRIu32" but got: %"PRIu32".\n", appconfig->nb_cores, rte_lcore_count());
 		config_destroy(config);
-		free(config);
+		rte_free(config);
 		return 1;
 	}
 	
@@ -267,7 +268,7 @@ read_forwarder_config(config_t *config, struct app_config *appconfig) {
 	config_setting_t *forwarders_conf = config_lookup(config, CN_FORWARDERS);
 	if (forwarders_conf == NULL) {
 		appconfig->nb_forwarder = 0;
-		RTE_LOG(INFO, CONFIG, "No forwarder.");
+		RTE_LOG(INFO, CONFIG, "No forwarder.\n");
 		return 0;
 	}
 
@@ -276,22 +277,22 @@ read_forwarder_config(config_t *config, struct app_config *appconfig) {
 	RTE_LOG(INFO, CONFIG, "Allocate memory for %"PRIu32" forwarder.\n", appconfig->nb_forwarder);
 
 	// memory for array of forwarder pointer
-	appconfig->forwarder = malloc(sizeof(struct forwarder_t*)
-									 * appconfig->nb_forwarder);
+	appconfig->forwarder = rte_malloc(NULL, sizeof(struct forwarder_t*)
+									 * appconfig->nb_forwarder, 64);
 
 	// init forwarder and add it to the forwarder array in app_config
 	for (unsigned i = 0; i < appconfig->nb_forwarder; ++i) {
 		config_setting_t * f_conf = config_setting_get_elem(forwarders_conf, i);
 
-		struct forwarder_t *forwarder = malloc(sizeof(struct forwarder_t));
+		struct forwarder_t *forwarder = rte_malloc(NULL, sizeof(struct forwarder_t), 64);
 		RTE_LOG(INFO, CONFIG, "New forwarder!\n");
 
 		if (get_forwarder(f_conf, appconfig, forwarder) != 0) {
 			RTE_LOG(ERR, CONFIG, "Could not set up forwarder.\n");
 			config_destroy(config);
-			free(config);
-			free(forwarder);
-			free(appconfig->forwarder);
+			rte_free(config);
+			rte_free(forwarder);
+			rte_free(appconfig->forwarder);
 			return 1;
 		}
 
@@ -321,12 +322,12 @@ read_counter_config(config_t *config, struct app_config *appconfig) {
 	RTE_LOG(INFO, CONFIG, "Allocate memory for %"PRIu32" counter.\n", appconfig->nb_counter);
 
 	// memory for array of counter pointer
-	appconfig->counter = malloc(sizeof(struct counter_t*)
-									 * appconfig->nb_counter);
+	appconfig->counter = rte_malloc(NULL, sizeof(struct counter_t*)
+									 * appconfig->nb_counter, 64);
 
 	// memory for core config
 	for (unsigned i = 0; i < appconfig->nb_cores; i++) {
-		core_configs[i].counter = malloc(sizeof(void *) * appconfig->nb_counter);
+		core_configs[i].counter = rte_malloc(NULL, sizeof(void *) * appconfig->nb_counter, 64);
 		core_configs[i].nb_counter = 0;
 	}
 
@@ -335,20 +336,20 @@ read_counter_config(config_t *config, struct app_config *appconfig) {
 	for (unsigned i = 0; i < appconfig->nb_counter; ++i) {
 		config_setting_t * f_conf = config_setting_get_elem(counters_conf, i);
 
-		struct counter_t *counter = malloc(sizeof(struct counter_t));
+		struct counter_t *counter = rte_malloc(NULL, sizeof(struct counter_t), 64);
 		RTE_LOG(INFO, CONFIG, "New counter!\n");
 
 		if (get_counter(f_conf, appconfig, counter) != 0) {
 			RTE_LOG(ERR, CONFIG, "Could not set up counter.\n");
-			free(counter);
-			free(appconfig->counter);
+			rte_free(counter);
+			rte_free(appconfig->counter);
 			return 1;
 		}
 		if (counter->core_id >= appconfig->nb_cores) {
 			RTE_LOG(ERR, CONFIG, "Core ID is %"PRIu32" but got only %"PRIu32" cores.\n",
 					 counter->core_id, appconfig->nb_cores);
-			free(counter);
-			free(appconfig->counter);
+			rte_free(counter);
+			rte_free(appconfig->counter);
 			return 1;
 		}
 
@@ -367,35 +368,35 @@ read_bench_sender_config(config_t * config, struct app_config * appconfig) {
 	config_setting_t * bench_senders_conf = config_lookup(config, CN_BENCH_SENDERS);
 	if (bench_senders_conf == NULL) {
 		appconfig->nb_bench_sender = 0;
-		RTE_LOG(INFO, CONFIG, "No bench sender.");
+		RTE_LOG(INFO, CONFIG, "No bench sender.\n");
 		return 0;
 	}
 	appconfig->nb_bench_sender = config_setting_length(bench_senders_conf);
 	struct core_config *core_configs = appconfig->core_configs;
 
 	for (unsigned i = 0; i < appconfig->nb_cores; i++) {
-		core_configs[i].bench_senders = malloc(sizeof(void *) * appconfig->nb_bench_sender);
+		core_configs[i].bench_senders = rte_malloc(NULL, sizeof(void *) * appconfig->nb_bench_sender, 64);
 		core_configs[i].nb_bench_sender = 0;
 	}
 
 	RTE_LOG(INFO, CONFIG, "Allocate memory for %"PRIu32" sender.\n", appconfig->nb_bench_sender);
 
 	// memory for array of bench sender pointer
-	appconfig->bench_senders = malloc(sizeof(struct bench_sender_t*)
-									 * appconfig->nb_bench_sender);
+	appconfig->bench_senders = rte_malloc(NULL, sizeof(struct bench_sender_t*)
+									 * appconfig->nb_bench_sender, 64);
 
 	for (unsigned i = 0; i < appconfig->nb_bench_sender; ++i) {
 		config_setting_t * bs_conf = config_setting_get_elem(bench_senders_conf, i);
 
-		struct bench_sender_t *bs = malloc(sizeof(struct bench_sender_t));
+		struct bench_sender_t *bs = rte_malloc(NULL, sizeof(struct bench_sender_t), 64);
 		RTE_LOG(INFO, CONFIG, "New sender!\n");
 
 		if (get_bench_sender(bs_conf, appconfig, bs) != 0) {
 			RTE_LOG(ERR, CONFIG, "Could not set up bench sender.\n");
 			config_destroy(config);
-			free(config);
-			free(bs);
-			free(appconfig->bench_senders);
+			rte_free(config);
+			rte_free(bs);
+			rte_free(appconfig->bench_senders);
 			return 1;
 		}
 
@@ -415,7 +416,7 @@ read_bench_receiver_config(config_t * config, struct app_config * appconfig) {
 	config_setting_t * bench_receivers_conf = config_lookup(config, CN_BENCH_RECEIVERS);
 	if (bench_receivers_conf == NULL) {
 		appconfig->nb_bench_receiver = 0;
-		RTE_LOG(INFO, CONFIG, "No bench receiver.");
+		RTE_LOG(INFO, CONFIG, "No bench receiver.\n");
 		return 0;
 	}
 
@@ -423,28 +424,28 @@ read_bench_receiver_config(config_t * config, struct app_config * appconfig) {
 	struct core_config *core_configs = appconfig->core_configs;
 
 	for (unsigned i = 0; i < appconfig->nb_cores; i++) {
-		core_configs[i].bench_receivers = malloc(sizeof(void *) * appconfig->nb_bench_receiver);
+		core_configs[i].bench_receivers = rte_malloc(NULL, sizeof(void *) * appconfig->nb_bench_receiver, 64);
 		core_configs[i].nb_bench_receiver = 0;
 	}
 
 	RTE_LOG(INFO, CONFIG, "Allocate memory for %"PRIu32" receiver.\n", appconfig->nb_bench_receiver);
 
 	// memory for array of bench receiver pointer
-	appconfig->bench_receivers = malloc(sizeof(struct bench_receiver_t*)
-									 * appconfig->nb_bench_receiver);
+	appconfig->bench_receivers = rte_malloc(NULL, sizeof(struct bench_receiver_t*)
+									 * appconfig->nb_bench_receiver, 64);
 
 	for (unsigned i = 0; i < appconfig->nb_bench_receiver; ++i) {
 		config_setting_t *br_conf = config_setting_get_elem(bench_receivers_conf, i);
 
-		struct bench_receiver_t *br = malloc(sizeof(struct bench_receiver_t));
+		struct bench_receiver_t *br = rte_malloc(NULL, sizeof(struct bench_receiver_t), 64);
 		RTE_LOG(INFO, CONFIG, "New receiver!\n");
 
 		if (get_bench_receiver(br_conf, appconfig, br) != 0) {
 			RTE_LOG(ERR, CONFIG, "Could not set up bench receiver.\n");
 			config_destroy(config);
-			free(config);
-			free(br);
-			free(appconfig->bench_receivers);
+			rte_free(config);
+			rte_free(br);
+			rte_free(appconfig->bench_receivers);
 			return 1;
 		}
 
@@ -458,7 +459,7 @@ read_config(const char * file, struct app_config * appconfig) {
 	RTE_LOG(INFO, CONFIG, "read config file: %s\n", file);
 
 
-	config_t * config = malloc(sizeof(config_t));
+	config_t * config = rte_malloc(NULL, sizeof(config_t), 64);
 	config_init(config);
 
 	if (config_read_file(config, file) != CONFIG_TRUE) {
@@ -509,7 +510,7 @@ read_config(const char * file, struct app_config * appconfig) {
 		if (status != 0) {
 			RTE_LOG(ERR, CONFIG, "Initialization of port %"PRIu32" failed.\n", i);
 			config_destroy(config);
-			free(config);
+			rte_free(config);
 			return 1;
 		}
 	}
@@ -517,13 +518,13 @@ read_config(const char * file, struct app_config * appconfig) {
 	/*
 	 * Core set up
 	 */
-	struct core_config * core_configs = malloc(sizeof(struct core_config) * appconfig->nb_cores);
+	struct core_config * core_configs = rte_malloc(NULL, sizeof(struct core_config) * appconfig->nb_cores, 64);
 	if (read_core_config(appconfig, config, core_configs) != 0) {
 		RTE_LOG(ERR, CONFIG, "Configuration failed: could not read core config.\n");
 		return 1;
 	}
 	for (unsigned i = 0; i < appconfig->nb_cores; ++i) {
-		core_configs[i].receiver = malloc(sizeof(void *) * appconfig->nb_ports);
+		core_configs[i].receiver = rte_malloc(NULL, sizeof(void *) * appconfig->nb_ports, 64);
 		core_configs[i].nb_receiver = 0;
 
 	}
@@ -533,8 +534,8 @@ read_config(const char * file, struct app_config * appconfig) {
 	 */
 	config_setting_t * receive_core_set = config_lookup(config, CN_RECEIVE_ON_CORES);
 
-	appconfig->sender = malloc(sizeof(struct transmit_t *) * appconfig->nb_ports);
-	appconfig->receiver = malloc(sizeof(struct receiver_t *) * appconfig->nb_ports);
+	appconfig->sender = rte_malloc(NULL, sizeof(struct transmit_t *) * appconfig->nb_ports, 64);
+	appconfig->receiver = rte_malloc(NULL, sizeof(struct receiver_t *) * appconfig->nb_ports, 64);
 
 	unsigned port_index = 0;
 	for (int port_id = 0; port_id < rte_eth_dev_count(); ++port_id) {
@@ -548,7 +549,7 @@ read_config(const char * file, struct app_config * appconfig) {
 		/* add receiver to app_config */
 		unsigned core_id = config_setting_get_int_elem(receive_core_set, port_index);
 
-		appconfig->receiver[port_index] = malloc(sizeof(struct receiver_t));
+		appconfig->receiver[port_index] = rte_malloc(NULL, sizeof(struct receiver_t), 64);
 		init_receiver(core_id, port_id, appconfig->receiver[port_index]);
 		appconfig->nb_receiver += 1;
 
@@ -574,7 +575,7 @@ read_config(const char * file, struct app_config * appconfig) {
 	if (read_counter_config(config, appconfig) != 0) {
 		RTE_LOG(ERR, CONFIG, "Configuration failed: could not read forwarder.\n");
 		config_destroy(config);
-		free(config);
+		rte_free(config);
 		return 1;
 	}
 
@@ -604,8 +605,8 @@ read_config(const char * file, struct app_config * appconfig) {
 		RTE_LOG(INFO, CONFIG, "Link receiver %"PRIu32"/%"PRIu32".\n", receiver_i, appconfig->nb_receiver);
 		struct receiver_t *receiver = appconfig->receiver[receiver_i];
 
-		receiver->args = malloc(sizeof(void*) * nb_receiving_comp);
-		receiver->handler = malloc(sizeof(void*) * nb_receiving_comp);
+		receiver->args = rte_malloc(NULL, sizeof(void*) * nb_receiving_comp, 64);
+		receiver->handler = rte_malloc(NULL, sizeof(void*) * nb_receiving_comp, 64);
 
 		int comp_i = 0;
 
@@ -669,7 +670,7 @@ read_config(const char * file, struct app_config * appconfig) {
 	 * Finish the configuration, clear resources, ...
 	 */
 	config_destroy(config);
-	free(config);
+	rte_free(config);
 
 	RTE_LOG(INFO, CONFIG, "Configuration finished.\n");
 	return 0;

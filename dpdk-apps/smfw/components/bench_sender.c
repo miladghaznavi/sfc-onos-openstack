@@ -15,6 +15,7 @@
 #include <sys/time.h>
 #include <libconfig.h>
 
+#include <rte_malloc.h>
 #include <rte_ether.h>
 #include <rte_ip.h>
 #include <rte_udp.h>
@@ -294,19 +295,19 @@ get_bench_sender(config_setting_t *bs_conf,
 		RTE_LOG(INFO, BENCH_SENDER, "Allocate memory for %"PRIu64" sequences.\n", bench_sender->nb_sequences);
 	
 		// memory for array of forwarder pointer
-		bench_sender->sequences = malloc(sizeof(struct bench_sequence_t*)
-										 * bench_sender->nb_sequences);
+		bench_sender->sequences = rte_malloc(NULL, sizeof(struct bench_sequence_t*)
+										 * bench_sender->nb_sequences, 64);
 	
 		// init forwarder and add it to the forwarder array in app_config
 		for (size_t i = 0; i < bench_sender->nb_sequences; ++i) {
 			RTE_LOG(INFO, BENCH_SENDER, "New sequence!\n");
 			config_setting_t *s_conf = config_setting_get_elem(sequences_conf, i);
-			struct bench_sequence_t *sequence = malloc(sizeof(struct bench_sequence_t));
+			struct bench_sequence_t *sequence = rte_malloc(NULL, sizeof(struct bench_sequence_t), 64);
 
 			if (get_sequence(s_conf, sequence) != 0) {
 				RTE_LOG(ERR, BENCH_SENDER, "Could not set up sequence.\n");
-				free(sequence);
-				free(bench_sender->sequences);
+				rte_free(sequence);
+				rte_free(bench_sender->sequences);
 				return 1;
 			}
 			bench_sender->sequences[i] = sequence;
@@ -320,7 +321,7 @@ get_bench_sender(config_setting_t *bs_conf,
 	bench_sender->pkts_send = 0;
 	bench_sender->pkts_counter = 0;
 	bench_sender->poll_counter = 0;
-	bench_sender->send_buf = malloc(sizeof(void*) * BURST_SIZE);
+	bench_sender->send_buf = rte_malloc(NULL, sizeof(void*) * BURST_SIZE, 64);
 
 	uint64_t msg[2];
 	bench_sender->prototype = gen_packet(bench_sender, NULL, 2);

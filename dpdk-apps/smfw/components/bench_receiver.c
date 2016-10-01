@@ -14,6 +14,7 @@
 #include <libconfig.h>
 #include <signal.h>
 
+#include <rte_malloc.h>
 #include <rte_ethdev.h>
 #include <rte_cycles.h>
 #include <rte_ether.h>
@@ -159,7 +160,7 @@ get_bench_receiver(config_setting_t *br_conf,
 	}
 
 	bench_receiver->nb_file_names = config_setting_length(log_file_names);
-	bench_receiver->file_names = malloc(sizeof(char*) * bench_receiver->nb_file_names);
+	bench_receiver->file_names = rte_malloc(NULL, sizeof(char*) * bench_receiver->nb_file_names, 64);
 
 	for (size_t i = 0; i < bench_receiver->nb_file_names; i++) {
 		const char *file_name = config_setting_get_string_elem(log_file_names, i);
@@ -167,7 +168,7 @@ get_bench_receiver(config_setting_t *br_conf,
 			RTE_LOG(ERR, BENCH_RECEIVER, "Could not read log file name.\n");
 			return 1;
 		}
-		bench_receiver->file_names[i] = malloc((strlen(file_name) + 1) * sizeof(char));
+		bench_receiver->file_names[i] = rte_malloc(NULL, (strlen(file_name) + 1) * sizeof(char), 64);
 		strcpy(bench_receiver->file_names[i], file_name);
 
 	}
@@ -193,5 +194,5 @@ free_bench_receiver(struct bench_receiver_t *bench_receiver) {
 	if (fclose(bench_receiver->cur_log_fd) != 0) {
 		RTE_LOG(ERR, BENCH_RECEIVER, "Could not write to log file.\n");
 	}
-	free(bench_receiver);
+	rte_free(bench_receiver);
 }

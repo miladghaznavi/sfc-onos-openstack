@@ -10,6 +10,7 @@
 
 #include <stdlib.h>
 
+#include <rte_malloc.h>
 #include <rte_ether.h>
 #include <rte_ip.h>
 #include <rte_log.h>
