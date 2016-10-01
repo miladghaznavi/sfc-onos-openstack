@@ -20,18 +20,18 @@
 void
 forwarder_receive_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 	if (nb_rx == 0) return;
+
 	struct forwarder_t *forwarder = (struct forwarder_t *) arg;
 	forwarder->pkts_received += nb_rx;
 	unsigned nb_tx = 0;
 
+	size_t send_i = 0;
 	for (unsigned pkt_i = 0; pkt_i < nb_rx; ++pkt_i) {
-		clock_t start = clock(), diff;
 
 		struct ether_hdr *eth_old = rte_pktmbuf_mtod(buffer[pkt_i], struct ether_hdr *);
 	
 		/* forwarde packet only if it was send to our MAC. */
 		if (!is_same_ether_addr(&forwarder->receive_port_mac, &eth_old->d_addr)) {
-			// RTE_LOG(INFO, FORWARDER, "Wrong d_MAC... "FORMAT_MAC"\n", ARG_V_MAC(eth_old->d_addr));
 			forwarder->pkts_dropped += 1;
 			continue;
 		}
@@ -39,43 +39,37 @@ forwarder_receive_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 		/* Clone the mbuf. */
 		struct rte_mbuf *m_clone = rte_pktmbuf_clone(buffer[pkt_i], forwarder->clone_pool);
 		struct rte_mbuf *header = rte_pktmbuf_clone(forwarder->eth_hdr, forwarder->clone_pool);
-		forwarder->nb_mbuf += 2;
 	
-		if (m_clone == NULL || header == NULL) {
+		if (m_clone == NULL) {
 			RTE_LOG(ERR, FORWARDER, "Could not clone packet! Mempool empty?\n");
 			forwarder->pkts_dropped += 1;
-			forwarder->nb_mbuf -= 2;
 			continue;
 		}
-
-		// RTE_LOG(INFO, FORWARDER, "Old packet:\n");
-		// print_packet_hex(m_clone);
 
 		if (forwarder->decap_on_send) {
 			wrapper_remove_data(m_clone);
 		}
 
-		// remove ether header
+		// // remove ether header
 		rte_pktmbuf_adj(m_clone, sizeof(struct ether_hdr));
 
-		// prepend new ether header:
+		// // prepend new ether header:
 		rte_pktmbuf_chain(header, m_clone);
 
-		// RTE_LOG(INFO, FORWARDER, "New packet:\n");
-		// print_packet_hex(header);
-
-		// send chained packet:
-		int send = 0;
-		while (send == 0) {
-			send = tx_put(forwarder->tx, &header, 1);
-		}
-		forwarder->pkts_send += send;
-		forwarder->nb_mbuf -= 2;
-
-		diff = clock() - start;
-		forwarder->time += diff * 1000.0 / CLOCKS_PER_SEC;
-		forwarder->nb_measurements += 1;
+		// send chained packet:		
+		forwarder->send_buf[send_i] = header;
+		send_i += 1;
 	}
+	clock_t start = clock(), diff;
+
+	if (send_i > 0) {
+		int send = rte_eth_tx_burst(forwarder->tx->port, forwarder->tx->queue, forwarder->send_buf, send_i);
+		forwarder->pkts_send += send;
+	}
+
+	diff = clock() - start;
+	forwarder->time += diff * 1000.0 / CLOCKS_PER_SEC;
+	forwarder->nb_measurements += nb_rx;
 }
 
 void
@@ -163,6 +157,7 @@ get_forwarder(config_setting_t *f_conf,
 	forwarder->time = 0.0;
 	forwarder->nb_measurements = 0.0;
 
+	forwarder->send_buf = malloc(sizeof(struct rte_mbuf*) * BURST_SIZE);
 	forwarder->pkt_pool = appconfig->pkt_pool;
 	forwarder->clone_pool = appconfig->clone_pool;
 

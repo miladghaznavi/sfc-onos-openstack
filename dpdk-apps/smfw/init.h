@@ -13,10 +13,12 @@
 #include "components/forwarder.h"
 #include "components/receiver.h"
 #include "components/counter.h"
+#include "components/bench_sender.h"
+#include "components/bench_receiver.h"
 
 #define TRUE 1
 #define FALSE 0
-#define START_DEBUGGER_ON_ERROR TRUE
+#define START_DEBUGGER_ON_ERROR FLASE
 
 /**
  * Per core app config
@@ -30,6 +32,12 @@ struct core_config {
 
 	unsigned nb_counter;
 	struct counter_t **counter;
+
+	unsigned nb_bench_sender;
+	struct bench_sender_t **bench_senders;
+
+	unsigned nb_bench_receiver;
+	struct bench_receiver_t **bench_receivers;
 };
 
 /**
@@ -56,6 +64,14 @@ struct app_config {
 
 	unsigned nb_counter;
 	struct counter_t **counter;
+
+	// BENCH Comps
+
+	unsigned nb_bench_sender;
+	struct bench_sender_t   **bench_senders;
+
+	unsigned nb_bench_receiver;
+	struct bench_receiver_t **bench_receivers;
 };
 
 /**

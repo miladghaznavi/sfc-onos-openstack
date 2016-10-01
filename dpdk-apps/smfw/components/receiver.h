@@ -7,12 +7,16 @@
 #include <rte_mbuf.h>
 #include <rte_ethdev.h>
 
+#define BURST_SIZE 128
+
 struct receiver_t {
     unsigned core_id;
     unsigned in_port;
     struct ether_addr mac;
 
     uint64_t pkts_received;
+    uint64_t nb_polls;
+    uint64_t nb_rec;
 
     unsigned nb_handler;
     void **args;

@@ -42,7 +42,18 @@ struct app_config * appconfig;
 
 static
 void handler(int sig) {
-    die();
+    int eno = rte_errno;
+    const char * errstr = rte_strerror(eno);
+    printf("\n\nEXIT. ERRNO: %s (%i)\n\n", errstr, eno);
+    char pidstr[128];
+    sprintf(pidstr, "%i", getpid());
+
+    if (vfork() == 0) {
+        execl("/usr/bin/gdb", "gdb", "-p", pidstr,(char *) 0);
+    }
+    sleep(2);
+
+    int x = *((int *) NULL);
 }
 
 static void
@@ -62,6 +73,21 @@ main_loop(void * arg) {
         for (unsigned i = 0; i < c->nb_receiver; i++) {
             poll_receiver(c->receiver[i]);
         }
+
+        /* Poll bench packet sender. */
+        for (unsigned i = 0; i < c->nb_bench_sender; i++) {
+            poll_bench_sender(c->bench_senders[i]);
+        }
+
+        // /* Poll bench packet receiver. */
+        // for (unsigned i = 0; i < c->nb_bench_receiver; i++) {
+        //     poll_bench_receiver(c->bench_receivers[i]);
+        // }
+
+        // /* Poll bench packet receiver. */
+        // for (unsigned i = 0; i < c->nb_bench_forwarder; i++) {
+        //     poll_bench_forwarder(c->bench_forwarders[i]);
+        // }
 
         // for (unsigned i = 0; i < c->nb_counter; i++) {
         //     poll_counter(c->counter[i]);
@@ -94,6 +120,16 @@ print_stats(void *dummy) {
 
         for (unsigned i = 0; i < appconfig->nb_counter; i++) {
             log_counter(appconfig->counter[i]);
+        }
+
+        /* log bench packet sender. */
+        for (unsigned i = 0; i < appconfig->nb_bench_sender; i++) {
+            log_bench_sender(appconfig->bench_senders[i]);
+        }
+    
+        /* log bench packet receiver. */
+        for (unsigned i = 0; i < appconfig->nb_bench_receiver; i++) {
+            log_bench_receiver(appconfig->bench_receivers[i]);
         }
     }
 }

@@ -20,7 +20,7 @@
 #define CN_SRC_UPD_PORT             "src_udp_port"
 #define CN_DST_UPD_PORT             "dst_udp_port"
         
-#define CN_PKT_INTERVAL             "packet_interval"
+#define CN_PKT_PER_SEC              "packet_per_sec"
         
 #define CN_LOG_FILE                 "log_file"
         
@@ -33,6 +33,9 @@
 #define CN_SENDER                   "sender"
 #define CN_FORWARDERS               "forwarder"
 #define CN_COUNTER                  "counter"
+#define CN_BENCH_SENDERS            "bench_senders"
+#define CN_BENCH_RECEIVERS          "bench_receivers"
+#define CN_BENCH_FORWARDERS         "bench_forwarders"
 
 /*
  * Counter configurable fields
@@ -54,4 +57,11 @@
 #define CN_TIMEOUT                  "timeout"
 
 #define CN_CHAIN_INDEX              "chain_index"
+
+#define CN_SEQUENCE                 "sequence"
+#define CN_PACKET_NB                "packet_nb"
+#define CN_PACKET_SIZE              "packet_size"
+
+#define CN_LOG_FILES                "sequence_log_name"
+
 #endif /* CONFIG_H_ */

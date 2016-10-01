@@ -32,6 +32,8 @@ struct forwarder_t {
 	struct rte_mbuf *eth_hdr;
 	struct rte_mempool *pkt_pool;
 	struct rte_mempool *clone_pool;
+	struct rte_mbuf **send_buf;
+
     unsigned nb_mbuf;
     double time;
     uint64_t nb_measurements;
