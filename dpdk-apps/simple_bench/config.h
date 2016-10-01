@@ -14,8 +14,8 @@
 #define CN_IN_PORT			"in_port"
 
 #define CN_SRC_MAC			"src_mac"
-
 #define CN_DST_MAC			"dst_mac"
+
 #define CN_SRC_IP			"src_ip"
 #define CN_DST_IP			"dst_ip"
 

@@ -20,7 +20,6 @@
 #include <rte_log.h>
 #include <rte_mbuf.h>
 
-#define BURST_SIZE 32
 #define PKT_HDR_SIZE (sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr) + sizeof(struct udp_hdr))
 
 #define RTE_LOGTYPE_BENCH_RECEIVER RTE_LOGTYPE_USER1
@@ -96,9 +95,8 @@ poll_bench_receiver(struct bench_receiver_t *bench_receiver) {
 	struct rte_mbuf *pkts_burst[BURST_SIZE];
 	unsigned nb_rx = 0;
 
-	struct timeval time_val;
-	gettimeofday(&time_val, NULL);
-	u_second_t time = ms_to_us(s_to_ms(time_val.tv_sec)) + time_val.tv_usec;
+	clock_t c_time = clock();
+	u_second_t time = (double) c_time / (double) CLOCKS_PER_U_SEC;
 
 	nb_rx = rte_eth_rx_burst((uint8_t) port, 0,
 					pkts_burst, BURST_SIZE);

@@ -1,80 +1,80 @@
 #
-#          2000 Pakete/s; 100-1400 Byte; 100K pakete pro sequenze
+#          10000 Pakete/s; 100-1400 Byte; 100K pakete pro sequenze
 #
        sequence = (
             {
-                packet_interval = 500;
+                packet_interval = 100;
                 packet_nb = 100000;
                 packet_size = 100;
             },{
-                packet_interval = 500;
+                packet_interval = 100;
                 packet_nb = 100000;
                 packet_size = 200;
             },{
-                packet_interval = 500;
+                packet_interval = 100;
                 packet_nb = 100000;
                 packet_size = 300;
             },{
-                packet_interval = 500;
+                packet_interval = 100;
                 packet_nb = 100000;
                 packet_size = 400;
             },{
-                packet_interval = 500;
+                packet_interval = 100;
                 packet_nb = 100000;
                 packet_size = 500;
             },{
-                packet_interval = 500;
+                packet_interval = 100;
                 packet_nb = 100000;
                 packet_size = 600;
             },{
-                packet_interval = 500;
+                packet_interval = 100;
                 packet_nb = 100000;
                 packet_size = 700;
             },{
-                packet_interval = 500;
+                packet_interval = 100;
                 packet_nb = 100000;
                 packet_size = 800;
             },{
-                packet_interval = 500;
+                packet_interval = 100;
                 packet_nb = 100000;
                 packet_size = 900;
             },{
-                packet_interval = 500;
+                packet_interval = 100;
                 packet_nb = 100000;
                 packet_size = 1000;
             },{
-                packet_interval = 500;
+                packet_interval = 100;
                 packet_nb = 100000;
                 packet_size = 1100;
             },{
-                packet_interval = 500;
+                packet_interval = 100;
                 packet_nb = 100000;
                 packet_size = 1200;
             },{
-                packet_interval = 500;
+                packet_interval = 100;
                 packet_nb = 100000;
                 packet_size = 1300;
             },{
-                packet_interval = 500;
+                packet_interval = 100;
                 packet_nb = 100000;
                 packet_size = 1400;
             }
         )
         sequence_log_name = [
-            "100K@500us100bit.csv",
-            "100K@500us200bit.csv",
-            "100K@500us300bit.csv",
-            "100K@500us400bit.csv",
-            "100K@500us500bit.csv",
-            "100K@500us600bit.csv",
-            "100K@500us700bit.csv",
-            "100K@500us800bit.csv",
-            "100K@500us900bit.csv",
-            "100K@500us1000bit.csv",
-            "100K@500us1100bit.csv",
-            "100K@500us1200bit.csv",
-            "100K@500us1300bit.csv",
-            "100K@500us1400bit.csv"
+            "100K@100us100bit.csv",
+            "100K@100us200bit.csv",
+            "100K@100us300bit.csv",
+            "100K@100us400bit.csv",
+            "100K@100us500bit.csv",
+            "100K@100us600bit.csv",
+            "100K@100us700bit.csv",
+            "100K@100us800bit.csv",
+            "100K@100us900bit.csv",
+            "100K@100us1000bit.csv",
+            "100K@100us1100bit.csv",
+            "100K@100us1200bit.csv",
+            "100K@100us1300bit.csv",
+            "100K@100us1400bit.csv"
         ];
 
 #

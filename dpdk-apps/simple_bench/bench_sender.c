@@ -22,9 +22,11 @@
 #define RTE_LOGTYPE_BENCH_SENDER RTE_LOGTYPE_USER3
 
 #define SOURCE_UDP_PORT 0
+#define BUFF_TIME_B4_SWITCH 1000 //ms
+#define BUFF_TIME_AFTR_SWITCH 1000 //ms
 
-static int
-send_packet(struct bench_sender_t *bench_sender, char *msg, uint32_t msg_size) {
+static struct rte_mbuf *
+gen_packet(struct bench_sender_t *bench_sender, char *msg, uint32_t msg_size) {
 	uint32_t pkt_size;
 	struct ether_hdr *eth_hdr;
 	struct ipv4_hdr *ip_hdr;
@@ -67,59 +69,89 @@ send_packet(struct bench_sender_t *bench_sender, char *msg, uint32_t msg_size) {
 	udp_hdr->dgram_len = rte_cpu_to_be_16(msg_size + sizeof(struct udp_hdr));
 	msg_start = rte_pktmbuf_mtod_offset(m, char*, sizeof(struct ether_hdr) 
 					+ sizeof(struct ipv4_hdr) + sizeof(struct udp_hdr));
-	memcpy(msg_start, msg, msg_size);
 
-	udp_hdr->dgram_cksum = rte_cpu_to_be_16(rte_ipv4_udptcp_cksum(ip_hdr, (const void *) udp_hdr));
+	if (msg != NULL)
+		memcpy(msg_start, msg, msg_size);
 
-	int send = rte_eth_tx_burst(bench_sender->output_port, 0, &m, 1);
+	return m;
+}
 
-	if (send > 0) {
-		bench_sender->pkts_send++;
-		sequence->nb_packets_send++;
-	} else {
-		rte_pktmbuf_free(m);
-	}
-	return send;
+static struct rte_mbuf *
+get_packet(struct bench_sender_t *bench_sender, char *msg, uint32_t msg_size) {
+	struct rte_mbuf * proto = bench_sender->prototype;
+
 }
 
 void
 poll_bench_sender(struct bench_sender_t *bench_sender) {
 	if (bench_sender->cur_sequence >= bench_sender->nb_sequences) return;
 
-	struct bench_sequence_t *sequence;
-	struct timeval time_val;
-	gettimeofday(&time_val, NULL);
+	// get time and current sequence config
+	clock_t c_time = clock();
+	u_second_t time = (double) c_time / (double) CLOCKS_PER_U_SEC;
+	struct bench_sequence_t *sequence = bench_sender->sequences[bench_sender->cur_sequence];
 
+	// check if we have to wait between sequences
+	if (sequence->nb_packets_send >= sequence->nb_packets) {
 
-	u_second_t time = ms_to_us(s_to_ms(time_val.tv_sec)) + time_val.tv_usec;
+		// sequence N -- NOW --- END-SEQ-PCKT ----- sequence N+1 (or end...)
+		if (time - bench_sender->last_tx > ms_to_us(BUFF_TIME_B4_SWITCH) && 
+							sequence->nb_packets_send <= sequence->nb_packets) {
 
-	if (bench_sender->wait < time - bench_sender->last_poll) {
-		uint64_t send_vals[2];
-		sequence = bench_sender->sequences[bench_sender->cur_sequence];
+			uint64_t msg[2];
+			msg[0] = STOP_SEQ;
+			msg[1] = time;
 
-		send_vals[0] = sequence->nb_packets_send;
-		send_vals[1] = time;
-
-		// if last packet, wait, send end sequence code, wait
-		if (sequence->nb_packets_send+1 == sequence->nb_packets) {
-			bench_sender->wait = ms_to_us(s_to_ms(2));
-        	bench_sender->last_poll = time;
-        	sequence->nb_packets_send++;
-        	return;
-        } else if (sequence->nb_packets_send+1 >= sequence->nb_packets) {
-			send_vals[0] = STOP_SEQ;
-        }
-
-		int send = send_packet(bench_sender, (char*) &send_vals, sizeof(time) *2);
-
-		// if packet was send
-		if (send_vals[0] == STOP_SEQ && send > 0) {
+			struct rte_mbuf *m = gen_packet(bench_sender, (char *) msg, sizeof(uint64_t) *2);
+	
+			int send = 0;
+			while (send == 0) {
+				send = rte_eth_tx_burst(bench_sender->output_port, 0, &m, 1);
+			}
+			sequence->nb_packets_send++;
+		} else if (time - bench_sender->last_tx > ms_to_us(BUFF_TIME_B4_SWITCH) + ms_to_us(BUFF_TIME_AFTR_SWITCH)) {
+		// sequence N ----- (END-SEQ-PCKT) ------ NOW ----- sequence N+1 (or end...)
 			bench_sender->cur_sequence++;
-			bench_sender->wait = ms_to_us(s_to_ms(2));
-		}
-        bench_sender->wait = sequence->packet_interval;
-        bench_sender->last_poll = time;
+			bench_sender->last_tx = time;
+
+		} 
+		return;
 	}
+
+	// determine the number of packets to send
+	uint64_t send_count = ((time - bench_sender->last_tx) * sequence->pkt_per_sec) / ms_to_us(s_to_ms(1));
+
+	// check that packet count is valid
+	if (send_count == 0) return;
+	else if (send_count > BURST_SIZE) send_count = BURST_SIZE;
+
+	// generate the packets
+	uint64_t nb_packets_send = sequence->nb_packets_send;
+	for (size_t i = 0; i < send_count; ++i) {
+		if (nb_packets_send >= sequence->nb_packets) {
+			send_count = i;
+			break;
+		}
+
+		uint64_t msg[2];
+		msg[0] = nb_packets_send;
+		msg[1] = time;
+
+		bench_sender->send_buf[i] = gen_packet(bench_sender, (char *) msg, sizeof(uint64_t) *2);
+		nb_packets_send++;
+	}
+
+	// send the generated packets
+	int send = rte_eth_tx_burst(bench_sender->output_port, 0, bench_sender->send_buf, send_count);
+	sequence->nb_packets_send += send;
+	bench_sender->pkts_send += send;
+
+	// stats
+	bench_sender->pkts_counter += send;
+	bench_sender->poll_counter += 1;
+
+	// remember the time!
+    bench_sender->last_tx = time;
 }
 
 void
@@ -134,8 +166,12 @@ log_bench_sender(struct bench_sender_t *bs) {
 	RTE_LOG(INFO, BENCH_SENDER, "| UDP estination port: %"PRIu16"\n", bs->dst_udp_port);
 	// RTE_LOG(INFO, BENCH_SENDER, "| Packet interval:     %"PRIu64"us\n", bs->packet_interval);
 	RTE_LOG(INFO, BENCH_SENDER, "| Packet send:         %"PRIu64"\n", bs->pkts_send);
+	if (bs->poll_counter != 0)
+		RTE_LOG(INFO, BENCH_SENDER, "| send per poll:       %"PRIu64"\n", bs->pkts_counter / bs->poll_counter);
 	RTE_LOG(INFO, BENCH_SENDER, "| Sequence:            %"PRIu64"\n", bs->cur_sequence);
 	RTE_LOG(INFO, BENCH_SENDER, "----------------------------------------\n");
+	bs->pkts_counter = 0;
+	bs->poll_counter = 0;
 }
 
 static int
@@ -174,7 +210,7 @@ static int
 get_sequence(config_setting_t *s_conf, struct bench_sequence_t *sequence) {
 
 	// INTERVAL
-	if (config_setting_lookup_int64(s_conf, CN_PKT_INTERVAL, (long long int *) &sequence->packet_interval) != CONFIG_TRUE) {
+	if (config_setting_lookup_int64(s_conf, CN_PKT_INTERVAL, (long long int *) &sequence->pkt_per_sec) != CONFIG_TRUE) {
 		RTE_LOG(ERR, BENCH_SENDER, "Could not read %s.\n", CN_PKT_INTERVAL);
 		return 1;
 	}
@@ -277,10 +313,16 @@ get_bench_sender(config_setting_t *bs_conf,
 			bench_sender->sequences[i] = sequence;
 		}
 	}
+	clock_t c_time = clock();
 
-	bench_sender->wait = 0;
-	bench_sender->last_poll = 0;
+	bench_sender->last_tx = ms_to_us(s_to_ms(c_time / CLOCKS_PER_SEC));
 	bench_sender->pkts_send = 0;
+	bench_sender->pkts_counter = 0;
+	bench_sender->poll_counter = 0;
+	bench_sender->send_buf = malloc(sizeof(void*) * BURST_SIZE);
+
+	uint64_t msg[2];
+	bench_sender->prototype = gen_packet(bench_sender, NULL, 2);
 
 	log_bench_sender(bench_sender);
 	return 0;
