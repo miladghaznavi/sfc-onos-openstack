@@ -59,8 +59,8 @@ rm dpdk-16.04.tar.xz
 #
 # Change to DPDK directory ( <this-script's-dir>/dpdk ), and export it as RTE_SDK
 #
-cd $(dirname ${BASH_SOURCE[0]})/dpdk
-export RTE_SDK=$PWD
+export RTE_SDK=$PWD/dpdk
+cd $RTE_SDK
 echo "------------------------------------------------------------------------------"
 echo " RTE_SDK exported as $RTE_SDK"
 echo "------------------------------------------------------------------------------"
@@ -88,9 +88,7 @@ setup_target()
             setup_icc ia32
         fi
     fi
-    if [ "$QUIT" == "0" ] ; then
-        make install T=${RTE_TARGET}
-    fi
+    make install T=${RTE_TARGET}
     echo "------------------------------------------------------------------------------"
     echo " RTE_TARGET exported as $RTE_TARGET"
     echo "------------------------------------------------------------------------------"
