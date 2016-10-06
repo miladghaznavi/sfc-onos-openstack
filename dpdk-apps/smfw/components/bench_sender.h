@@ -44,7 +44,7 @@ struct bench_sender_t {
 	struct bench_sequence_t **sequences;
 
 	struct rte_mbuf *prototype;
-	uint16_t prototype_pckt_size; 
+	uint16_t prototype_ip_size; 
 	struct rte_mbuf **send_buf;
 };
 
@@ -52,7 +52,7 @@ struct bench_sequence_t {
 	size_t nb_packets;
 	size_t nb_packets_send;
 	size_t pkt_per_sec;
-	unsigned packet_size;
+	unsigned ip_size;
 };
 
 void

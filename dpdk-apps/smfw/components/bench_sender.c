@@ -30,49 +30,50 @@
 #define BUFF_TIME_AFTR_SWITCH 1000 //ms
 
 void
-gen_prototype(struct bench_sender_t *bench_sender, uint32_t msg_size, uint32_t pckt_size) {
+gen_prototype(struct bench_sender_t *bench_sender, uint32_t msg_size, uint32_t ip_size) {
 	struct ether_hdr *eth_hdr;
 	struct ipv4_hdr *ip_hdr;
 	struct udp_hdr *udp_hdr;
-	uint32_t hdr_size = sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr) + sizeof(struct udp_hdr);
 
 	// generate prototype packet:
 	if (bench_sender->prototype == NULL) {
-		
+		uint32_t hdr_size = sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr) + sizeof(struct udp_hdr);
+
 		struct rte_mbuf *m = rte_pktmbuf_alloc(bench_sender->pkt_pool);
 		if (m == NULL || m->buf_len <= hdr_size) {
 			RTE_LOG(ERR, BENCH_SENDER, "mbuf alloc failed!\n");
 			die();
 		}
 	
-		m->data_len = hdr_size - 2;
-		m->pkt_len = hdr_size - 2;
-	
+		m->data_len = hdr_size;
+		m->pkt_len = m->data_len;
 		eth_hdr = rte_pktmbuf_mtod(m, struct ether_hdr *);
+
 		ether_addr_copy(&bench_sender->tx->send_port_mac, &eth_hdr->s_addr);
 		ether_addr_copy(&bench_sender->dst_mac, &eth_hdr->d_addr);
-		eth_hdr->ether_type = rte_cpu_to_be_16(0);//ETHER_TYPE_IPv4);
+		eth_hdr->ether_type = rte_cpu_to_be_16(ETHER_TYPE_IPv4);
 	
 		ip_hdr = rte_pktmbuf_mtod_offset(m, struct ipv4_hdr *, sizeof(struct ether_hdr));
+
 		ip_hdr->version_ihl = 0x45;
 		ip_hdr->time_to_live = 0xF;
 		ip_hdr->src_addr = rte_cpu_to_be_32(bench_sender->src_ip);
 		ip_hdr->dst_addr = rte_cpu_to_be_32(bench_sender->dst_ip);
 		ip_hdr->next_proto_id = IPPROTO_UDP;
 
-		ip_hdr->total_length = rte_cpu_to_be_16(hdr_size - sizeof(struct ether_hdr) + pckt_size);
+		ip_hdr->total_length = rte_cpu_to_be_16(ip_size);
 	
 		ip_hdr->hdr_checksum = 0;
 		ip_hdr->hdr_checksum  = rte_ipv4_cksum(ip_hdr);
 	
 		udp_hdr = rte_pktmbuf_mtod_offset(m, struct udp_hdr *, 
 			sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr));
+
 		udp_hdr->src_port = SOURCE_UDP_PORT;
 		udp_hdr->dst_port = rte_cpu_to_be_16(bench_sender->dst_udp_port);
 		udp_hdr->dgram_len = rte_cpu_to_be_16(msg_size + sizeof(struct udp_hdr));
 
 		bench_sender->prototype = m;
-		print_packet_hex(m);
 	// or get headers and update values
 	} else {
 		eth_hdr = rte_pktmbuf_mtod(bench_sender->prototype, struct ether_hdr *);
@@ -80,34 +81,33 @@ gen_prototype(struct bench_sender_t *bench_sender, uint32_t msg_size, uint32_t p
 		udp_hdr = rte_pktmbuf_mtod_offset(bench_sender->prototype, struct udp_hdr *, 
 			sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr));
 
-		ip_hdr->total_length = rte_cpu_to_be_16(hdr_size - sizeof(struct ether_hdr) + pckt_size);
+		ip_hdr->total_length = rte_cpu_to_be_16(ip_size);
 		ip_hdr->hdr_checksum = 0;
 		ip_hdr->hdr_checksum  = rte_ipv4_cksum(ip_hdr);
 		udp_hdr->dgram_len = rte_cpu_to_be_16(msg_size + sizeof(struct udp_hdr));
 	}
 
-	bench_sender->prototype_pckt_size = pckt_size;
+	bench_sender->prototype_ip_size = ip_size;
 }
 
 static struct rte_mbuf *
-gen_packet(struct bench_sender_t *bench_sender, char *msg, uint32_t msg_size, uint32_t pckt_size) {
-	uint32_t hdr_size = sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr) + sizeof(struct udp_hdr);
-
-	if (bench_sender->prototype_pckt_size != pckt_size || bench_sender->prototype == NULL) {
-		gen_prototype(bench_sender, msg_size, pckt_size);
+gen_packet(struct bench_sender_t *bench_sender, char *msg, uint32_t msg_size, uint32_t ip_size) {
+	if (bench_sender->prototype_ip_size != ip_size || bench_sender->prototype == NULL) {
+		gen_prototype(bench_sender, msg_size, ip_size);
 	}
 
 	struct rte_mbuf *hdr_mbuf = rte_pktmbuf_clone(bench_sender->prototype, bench_sender->clone_pool);
 	struct rte_mbuf *msg_mbuf = rte_pktmbuf_alloc(bench_sender->pkt_pool);
 
-	msg_mbuf->data_len = pckt_size;
-	msg_mbuf->pkt_len = pckt_size;
 
+	msg_mbuf->data_len = ip_size - sizeof(struct udp_hdr) - sizeof(struct ipv4_hdr);
+	msg_mbuf->pkt_len = msg_mbuf->data_len;
 
 	char*msg_start = rte_pktmbuf_mtod(msg_mbuf, char*);
 	if (msg != NULL) memcpy(msg_start, msg, msg_size);
 
 	rte_pktmbuf_chain(hdr_mbuf, msg_mbuf);
+
 	return hdr_mbuf;
 }
 
@@ -166,10 +166,7 @@ poll_bench_sender(struct bench_sender_t *bench_sender) {
 		msg[1] = time;
 
 		bench_sender->send_buf[i] = gen_packet(bench_sender, (char *) msg, 
-			sizeof(uint64_t) *2, sequence->packet_size);
-		if (nb_packets_send == 1) {
-			print_packet_hex(bench_sender->send_buf[i]);
-		}
+			sizeof(uint64_t) *2, sequence->ip_size);
 		nb_packets_send++;
 	}
 
@@ -261,7 +258,7 @@ get_sequence(config_setting_t *s_conf, struct bench_sequence_t *sequence) {
 	}
 
 	// PACKET SIZE
-	if (config_setting_lookup_int64(s_conf, CN_PACKET_SIZE, (long long int *) &sequence->packet_size) != CONFIG_TRUE) {
+	if (config_setting_lookup_int64(s_conf, CN_PACKET_SIZE, (long long int *) &sequence->ip_size) != CONFIG_TRUE) {
 		RTE_LOG(ERR, BENCH_SENDER, "Could not read %s.\n", CN_PACKET_SIZE);
 		return 1;
 	}
@@ -362,11 +359,10 @@ get_bench_sender(config_setting_t *bs_conf,
 	bench_sender->pkts_counter = 0;
 	bench_sender->poll_counter = 0;
 	bench_sender->prototype = NULL;
-	bench_sender->prototype_pckt_size = 0;
+	bench_sender->prototype_ip_size = 0;
 	bench_sender->send_buf = rte_malloc(NULL, sizeof(void*) * BURST_SIZE, 64);
 
 	uint64_t msg[2];
-	bench_sender->prototype = gen_packet(bench_sender, NULL, 2, 100);
 
 	log_bench_sender(bench_sender);
 	return 0;
