@@ -15,11 +15,10 @@ struct app_config;
 
 struct bench_sender_t {
 	/** Port on which we receive packets to replicate */
-	unsigned output_port;
+	struct transmit_t *tx;
 	unsigned core_id;
 
 	/* Source and destination MAC address. */
-	struct ether_addr src_mac;
 	struct ether_addr dst_mac;
 
 	/* Source and destination IP address. */
@@ -37,6 +36,7 @@ struct bench_sender_t {
 	uint64_t pkts_send;
 
 	uint64_t pkts_counter;
+	uint64_t should_pkts_counter;
 	uint64_t poll_counter;
 
 	size_t cur_sequence;
@@ -44,6 +44,7 @@ struct bench_sender_t {
 	struct bench_sequence_t **sequences;
 
 	struct rte_mbuf *prototype;
+	uint16_t prototype_pckt_size; 
 	struct rte_mbuf **send_buf;
 };
 

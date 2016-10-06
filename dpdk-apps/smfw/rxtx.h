@@ -1,12 +1,3 @@
-/**
- * Functions which allow sending packets in bursts using DPDK-rings.
- *
- * @file rxtx.h
- * @author Matthias Drexler
- * @author Philipp Jeitner
- * @date 3 Dec 2015
- */
-
 #ifndef RXTX_H_
 #define RXTX_H_
 
@@ -14,18 +5,19 @@
 
 #include <rte_mbuf.h>
 
-struct transmit_t {
+#include "components/arp_sender.h"
 
-	uint64_t last_transmit;
-	uint64_t transmit_timeout;
+struct transmit_t {
+    double hz;
+	double last_transmit;
 
 	unsigned port;
 	unsigned queue;
-	unsigned immediate;
 
+	struct arp_sender_t *arp_sender;
 	struct ether_addr send_port_mac;
 
-	uint64_t nb_dropped;
+
 };
 /**
  * Creates an immediate-mode tx object,

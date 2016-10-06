@@ -35,10 +35,10 @@
 #define RTE_TEST_RX_DESC_DEFAULT 128
 #define RTE_TEST_TX_DESC_DEFAULT 512
 
-#define MBUF_SIZE 1700
+#define MBUF_SIZE 1600
 
-static uint16_t nb_rxd = RTE_TEST_RX_DESC_DEFAULT;
-static uint16_t nb_txd = RTE_TEST_TX_DESC_DEFAULT;
+#define NB_RXD RTE_TEST_RX_DESC_DEFAULT
+#define NB_TXD RTE_TEST_TX_DESC_DEFAULT
 
 /**
 * Ethernet addresses of ports.
@@ -182,7 +182,7 @@ initialize_port(uint8_t portid, struct rte_mempool* mempool, uint16_t rx_queues,
 	// Initialize RX-queues for each port.
 	for (unsigned i = 0; i < rx_queues; i++) {
 		fflush(stdout);
-		int rx_setup = rte_eth_rx_queue_setup(portid, i, nb_rxd,
+		int rx_setup = rte_eth_rx_queue_setup(portid, i, NB_RXD,
 			rte_eth_dev_socket_id(portid), NULL, mempool);
 		if (rx_setup < 0) {
 			RTE_LOG(INFO, PORT_INIT, "rx setup ERROR %d\n", rx_setup);
@@ -193,7 +193,7 @@ initialize_port(uint8_t portid, struct rte_mempool* mempool, uint16_t rx_queues,
 	// Initialize TX-queues for each port.
 	for (unsigned i = 0; i < tx_queues; i++) {
 		fflush(stdout);
-		int tx_setup = rte_eth_tx_queue_setup(portid, i, nb_txd,
+		int tx_setup = rte_eth_tx_queue_setup(portid, i, NB_TXD,
 			rte_eth_dev_socket_id(portid), NULL);
 		if (tx_setup < 0) {
 			RTE_LOG(INFO, PORT_INIT, "tx setup ERROR %d\n", tx_setup);
@@ -454,6 +454,50 @@ read_bench_receiver_config(config_t * config, struct app_config * appconfig) {
 	return 0;
 }
 
+static int
+read_arp_sender_config(config_t * config, struct app_config * appconfig) {
+
+	config_setting_t * arp_sender_conf = config_lookup(config, CN_ARP_SENDERS);
+	if (arp_sender_conf == NULL) {
+		appconfig->nb_arp_sender = 0;
+		RTE_LOG(INFO, CONFIG, "No arp sender.\n");
+		return 0;
+	}
+
+	appconfig->nb_arp_sender = config_setting_length(arp_sender_conf);
+	struct core_config *core_configs = appconfig->core_configs;
+
+	for (unsigned i = 0; i < appconfig->nb_cores; i++) {
+		core_configs[i].arp_senders = rte_malloc(NULL, sizeof(void *) * appconfig->nb_arp_sender, 64);
+		core_configs[i].nb_arp_sender = 0;
+	}
+
+	RTE_LOG(INFO, CONFIG, "Allocate memory for %"PRIu32" arp sender.\n", appconfig->nb_arp_sender);
+
+	// memory for array of arp sender pointer
+	appconfig->arp_senders = rte_malloc(NULL, sizeof(struct arp_sender_t*)
+									 * appconfig->nb_arp_sender, 64);
+
+	for (unsigned i = 0; i < appconfig->nb_arp_sender; ++i) {
+		config_setting_t *sett = config_setting_get_elem(arp_sender_conf, i);
+
+		struct arp_sender_t *as = rte_malloc(NULL, sizeof(struct arp_sender_t), 64);
+		RTE_LOG(INFO, CONFIG, "New arp sender!\n");
+
+		if (get_arp_sender(sett, appconfig, as) != 0) {
+			RTE_LOG(ERR, CONFIG, "Could not set up arp sender.\n");
+			config_destroy(config);
+			rte_free(config);
+			rte_free(as);
+			rte_free(appconfig->arp_senders);
+			return 1;
+		}
+
+		appconfig->arp_senders[i] = as;
+	}
+	return 0;
+}
+
 int
 read_config(const char * file, struct app_config * appconfig) {
 	RTE_LOG(INFO, CONFIG, "read config file: %s\n", file);
@@ -592,6 +636,14 @@ read_config(const char * file, struct app_config * appconfig) {
 	 */
 	if (read_bench_receiver_config(config, appconfig) != 0) {
 		RTE_LOG(ERR, CONFIG, "Configuration failed: could not read bench receiver.\n");
+		return 1;
+	}
+
+	/*
+	 * Read configuration of arp sender:
+	 */
+	if (read_arp_sender_config(config, appconfig) != 0) {
+		RTE_LOG(ERR, CONFIG, "Configuration failed: could not read arp sender.\n");
 		return 1;
 	}
 

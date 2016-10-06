@@ -21,7 +21,7 @@ log_receiver(struct receiver_t *receiver) {
     RTE_LOG(INFO, RECEIVER, "| MAC:              "FORMAT_MAC"\n", ARG_V_MAC(receiver->mac));
     RTE_LOG(INFO, RECEIVER, "| Packets received: %"PRIu64"\n", receiver->pkts_received);
     if (receiver->nb_polls != 0)
-        RTE_LOG(INFO, RECEIVER, "| Load:             %"PRIu64"\n", receiver->nb_rec / receiver->nb_polls);
+        RTE_LOG(INFO, RECEIVER, "| Load:             %f\n", receiver->nb_rec / (float) receiver->nb_polls);
     // RTE_LOG(INFO, RECEIVER, "| Time:             %f\n", receiver->time/receiver->nb_measurements);
     RTE_LOG(INFO, RECEIVER, "------------------------------------\n");
 
@@ -36,13 +36,14 @@ poll_receiver(struct receiver_t *receiver) {
 
     // clock_t start = clock(), diff;
 
-    unsigned nb_rx = rte_eth_rx_burst((uint8_t) port, 0,
+    uint64_t nb_rx = rte_eth_rx_burst((uint8_t) port, 0,
                     pkts_burst, BURST_SIZE);
 
 
     receiver->pkts_received += nb_rx;
-    if (nb_rx != 0)
+    if (nb_rx != 0) {
         receiver->nb_polls++;
+    }
     receiver->nb_rec += nb_rx;
 
     for (unsigned h_index = 0; h_index < receiver->nb_handler; ++h_index) {
@@ -50,12 +51,12 @@ poll_receiver(struct receiver_t *receiver) {
         receiver->handler[h_index](receiver->args[h_index], pkts_burst, nb_rx);
     }
     for (unsigned p_index = 0; p_index < nb_rx; ++p_index) {
-        rte_pktmbuf_free(pkts_burst[p_index]);
-        // if (rte_mbuf_refcnt_read(pkts_burst[p_index]) > 1) {
-        //     rte_mbuf_refcnt_update(pkts_burst[p_index], -1);
-        // } else {
-        //     rte_pktmbuf_free(pkts_burst[p_index]);
-        // }
+        // rte_pktmbuf_free(pkts_burst[p_index]);
+        if (rte_mbuf_refcnt_read(pkts_burst[p_index]) > 1) {
+            rte_mbuf_refcnt_update(pkts_burst[p_index], -1);
+        } else {
+            rte_pktmbuf_free(pkts_burst[p_index]);
+        }
     }
 
     // diff = clock() - start;

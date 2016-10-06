@@ -44,8 +44,10 @@ forwarder_receive_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 		struct rte_mbuf *header = rte_pktmbuf_clone(forwarder->eth_hdr, forwarder->clone_pool);
 	
 		if (m_clone == NULL || header == NULL) {
-			RTE_LOG(ERR, FORWARDER, "Could not clone packet! Mempool empty?\n");
-			forwarder->pkts_dropped += 1;
+			if (m_clone != NULL) rte_pktmbuf_free(m_clone);
+			else if (header != NULL) rte_pktmbuf_free(m_clone);
+
+			forwarder->pkts_failed += 1;
 			continue;
 		}
 
@@ -64,10 +66,11 @@ forwarder_receive_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 		send_i += 1;
 	}
 
-	if (send_i > 0) {
-		int send = rte_eth_tx_burst(forwarder->tx->port, forwarder->tx->queue, forwarder->send_buf, send_i);
-		forwarder->pkts_send += send;
+	int send = 0;//tx_put(forwarder->tx, forwarder->send_buf, send_i);
+	while (send < send_i) {
+		send += tx_put(forwarder->tx, (forwarder->send_buf + send), send_i - send);
 	}
+	forwarder->pkts_send += send;
 	
 	diff = clock() - start;
 	forwarder->time += diff * 1000.0 / CLOCKS_PER_SEC;
@@ -84,6 +87,7 @@ log_forwarder(struct forwarder_t *f) {
 	RTE_LOG(INFO, FORWARDER, "| Packets received: %"PRIu64"\n", f->pkts_received);
 	RTE_LOG(INFO, FORWARDER, "| Packets send:     %"PRIu64"\n", f->pkts_send);
 	RTE_LOG(INFO, FORWARDER, "| Packets dropped:  %"PRIu64"\n", f->pkts_dropped);
+	RTE_LOG(INFO, FORWARDER, "| Packets failed:   %"PRIu64"\n", f->pkts_failed);
 	RTE_LOG(INFO, FORWARDER, "| Time:             %f\n", f->time/f->nb_measurements);
 	RTE_LOG(INFO, FORWARDER, "-------------------------------------\n");
 }
@@ -155,6 +159,7 @@ get_forwarder(config_setting_t *f_conf,
 	forwarder->pkts_received = 0;
 	forwarder->pkts_send = 0;
 	forwarder->pkts_dropped = 0;
+	forwarder->pkts_failed = 0;
 	forwarder->nb_mbuf = 0;
 	forwarder->time = 0.0;
 	forwarder->nb_measurements = 0.0;

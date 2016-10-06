@@ -27,6 +27,7 @@
 
 #define RTE_LOGTYPE_BENCH_RECEIVER RTE_LOGTYPE_USER1
 
+
 static int
 open_log_file(struct bench_receiver_t *bench_receiver, int seq) {
 	if (bench_receiver->nb_file_names <= seq) return 1;
@@ -44,7 +45,7 @@ open_next_log(struct bench_receiver_t *bench_receiver) {
 }
 
 uint64_t
-extract_timestamp(struct rte_mbuf *m, uint16_t udp_port, u_second_t **ptr_timestamps) {
+extract_timestamp(struct rte_mbuf *m, uint16_t udp_port, uint64_t **ptr_timestamps) {
 
 	uint64_t* msg_start;
 	struct ether_hdr *eth_hdr;
@@ -70,8 +71,8 @@ extract_timestamp(struct rte_mbuf *m, uint16_t udp_port, u_second_t **ptr_timest
  
 	// VV     Tests Passed!                      VVV
 
-	msg_start = rte_pktmbuf_mtod_offset(m, u_second_t*, PKT_HDR_SIZE);
-	unsigned nb_timestamps = (rte_be_to_cpu_16(udp_hdr->dgram_len) - sizeof(struct udp_hdr)) / sizeof(u_second_t);
+	msg_start = rte_pktmbuf_mtod_offset(m, uint64_t*, PKT_HDR_SIZE);
+	uint64_t nb_timestamps = (rte_be_to_cpu_16(udp_hdr->dgram_len) - sizeof(struct udp_hdr)) / sizeof(uint64_t);
 
 	*ptr_timestamps = msg_start;
 	return nb_timestamps;
@@ -95,22 +96,23 @@ bench_receiver_receive_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 	if (nb_rx == 0) return;
 	struct bench_receiver_t *bench_receiver = (struct bench_receiver_t *) arg;
 
-	clock_t c_time = clock();
-	u_second_t time = (double) c_time / (double) CLOCKS_PER_U_SEC;
+	uint64_t time = (double) clock() / (double) CLOCKS_PER_U_SEC;
 
 	for (unsigned index = 0; index < nb_rx; ++index) {
-		u_second_t* timestamps;
+		uint64_t* timestamps;
 		unsigned nb_timestamps = extract_timestamp(buffer[index], 
 			bench_receiver->udp_in_port, &timestamps);
-
+	
 		if (nb_timestamps > 1) {
 			uint64_t seq_nb = timestamps[0];
-			u_second_t send_tm = timestamps[1];
-	
+			uint64_t send_tm = timestamps[1];
+		
+
+			// Save values
+
 			for (unsigned i = 0; i < nb_timestamps; ++i) {
 				fprintf(bench_receiver->cur_log_fd, "%"PRIu64";", timestamps[i]);
 			}
-
 			fprintf(bench_receiver->cur_log_fd, "%"PRIu64";", time);
 			fputs("\n", bench_receiver->cur_log_fd);
 
@@ -130,8 +132,7 @@ int
 get_bench_receiver(config_setting_t *br_conf, 
                 struct app_config *appconfig, 
                 struct bench_receiver_t *bench_receiver) {
-
-
+	
 	// receiver
 	unsigned receiver_i;
 	if (config_setting_lookup_int(br_conf, CN_RX_ID, &receiver_i) != CONFIG_TRUE) {

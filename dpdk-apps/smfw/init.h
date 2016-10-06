@@ -15,6 +15,7 @@
 #include "components/counter.h"
 #include "components/bench_sender.h"
 #include "components/bench_receiver.h"
+#include "components/arp_sender.h"
 
 #define TRUE 1
 #define FALSE 0
@@ -38,6 +39,9 @@ struct core_config {
 
 	unsigned nb_bench_receiver;
 	struct bench_receiver_t **bench_receivers;
+
+	unsigned nb_arp_sender;
+	struct arp_sender_t **arp_senders;
 };
 
 /**
@@ -50,6 +54,8 @@ struct app_config {
 	struct rte_mempool *pkt_pool;
 	struct rte_mempool *clone_pool;
 
+	// CORE Comps
+
 	unsigned nb_cores;
 	struct core_config *core_configs;
 
@@ -58,6 +64,8 @@ struct app_config {
 
 	unsigned nb_receiver;
 	struct receiver_t **receiver;
+
+	// FIREWALL Comps
 
 	unsigned nb_forwarder;
 	struct forwarder_t **forwarder;
@@ -72,6 +80,11 @@ struct app_config {
 
 	unsigned nb_bench_receiver;
 	struct bench_receiver_t **bench_receivers;
+
+	// HELPER Comps
+
+	unsigned nb_arp_sender;
+	struct arp_sender_t **arp_senders;
 };
 
 /**

@@ -5,12 +5,23 @@
 
 #include <rte_ether.h>
 #include <rte_byteorder.h>
+#include <rte_cycles.h>
 
 #define FORMAT_MAC "%02X:%02X:%02X:%02X:%02X:%02X"
 #define ARG_V_MAC(X) X.addr_bytes[0], X.addr_bytes[1], X.addr_bytes[2], X.addr_bytes[3], X.addr_bytes[4], X.addr_bytes[5]
 
 #define FORMAT_IP "%d.%d.%d.%d"
 #define ARG_V_IP(X) rte_be_to_cpu_32(X) & 0xFF, (rte_be_to_cpu_32(X) >> 8) & 0xFF, (rte_be_to_cpu_32(X) >> 16) & 0xFF, (rte_be_to_cpu_32(X) >> 24) & 0xFF
+
+/* default timer frequency */
+static inline double
+cycles_to_ns(uint64_t cycles, double hz)
+{
+    double t = cycles;
+    t *= (double) NS_PER_S;
+    t /= hz;
+    return t;
+}
 
 int
 parse_mac(const char *mac_str, struct ether_addr *mac);

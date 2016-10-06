@@ -67,8 +67,6 @@ count_decissions(uint32_t decissions) {
 static struct indextable_entry *
 counter_register(struct counter_t *counter, struct rte_mbuf *packet) {
 
-	struct ether_hdr *eth = rte_pktmbuf_mtod(packet, struct ether_hdr *);
-
 	struct metadata_t metadata;
  	if (counter->encap_on_register) {
 		metadata.decissions = 0;
@@ -100,19 +98,15 @@ counter_register_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 	unsigned nb_registered = 0;
 	for (unsigned i = 0; i < nb_rx; ++i) {
 
-		// forwarder changes MAC...
 		struct ether_hdr *eth = rte_pktmbuf_mtod(buffer[i], struct ether_hdr *);
 		if (!is_same_ether_addr(&counter->rx_register->mac, &eth->d_addr)) {
-			RTE_LOG(INFO, COUNTER, "register drop: "FORMAT_MAC" != "FORMAT_MAC"\n",ARG_V_MAC(counter->rx_register->mac), ARG_V_MAC(eth->d_addr));
 			continue;
 		}
 
 		bulk[nb_registered] = rte_pktmbuf_clone(buffer[i], counter->clone_pool);
-		counter->nb_mbuf++;
 
 		if (bulk[nb_registered] == NULL) {
 			RTE_LOG(ERR, COUNTER, "Could not clone mbuf!\n");
-			counter->nb_mbuf--;
 			continue;
 		}
 		nb_registered += 1;
@@ -175,7 +169,9 @@ counter_firewall_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 			// print_packet_hex(buffer[i]);
 		}
 	}
+
 	fwd_timedout_pkts(counter);
+
     diff = clock() - start;
     counter->time += diff * 1000.0 / CLOCKS_PER_SEC;
     counter->nb_measurements += 1;
@@ -200,7 +196,6 @@ log_counter(struct counter_t *c) {
 	RTE_LOG(INFO, COUNTER, "| Entries replaced:  %"PRIu64"\n", c->indextable->replaced_entries);
 	RTE_LOG(INFO, COUNTER, "| nb Entries:        %"PRIu32"\n", d_list_len(&c->indextable->tail)-2);
     RTE_LOG(INFO, COUNTER, "| Time:             %f\n", c->time/c->nb_measurements);
-	RTE_LOG(INFO, COUNTER, "| mbufs:             %"PRIu32"\n", rte_mempool_count(c->pool));
 	struct indextable_entry *entry = indextable_oldest(c->indextable);
 	if (entry != NULL) {
 		RTE_LOG(INFO, COUNTER, "| oldest :   %"PRIu64"\n", indextable_entry_age(entry));
@@ -291,7 +286,7 @@ get_counter(config_setting_t *c_conf,
 	rte_eth_macaddr_get(counter->tx->port, &counter->send_port_mac);
 	rte_eth_macaddr_get(counter->rx_firewall->in_port, &counter->fw_port_mac);
 
-	//NEXT VNF MAC
+	// NEXT VNF MAC
 	if (read_mac(c_conf, CN_NEXT_VNF_MAC, &counter->next_mac) != 0) {
 		RTE_LOG(ERR, COUNTER, "Could not read %s.\n", CN_NEXT_VNF_MAC);
 		return 1;

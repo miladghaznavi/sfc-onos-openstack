@@ -131,6 +131,8 @@ print_stats(void *dummy) {
         for (unsigned i = 0; i < appconfig->nb_bench_receiver; i++) {
             log_bench_receiver(appconfig->bench_receivers[i]);
         }
+        RTE_LOG(INFO, MAIN, "Clone Pool: %"PRIu32"\n", rte_mempool_count(appconfig->clone_pool));
+        RTE_LOG(INFO, MAIN, "Packet Pool: %"PRIu32"\n", rte_mempool_count(appconfig->pkt_pool));
     }
 }
 
@@ -186,7 +188,7 @@ main(int argc, char *argv[]) {
         usage(argv[0]);
         return 0;
     }
-
+    
     /* Get the desired configuration */
     appconfig = malloc(sizeof(struct app_config));
     if (read_config(argv[1], appconfig) != 0)

@@ -36,6 +36,7 @@
 #define CN_BENCH_SENDERS            "bench_senders"
 #define CN_BENCH_RECEIVERS          "bench_receivers"
 #define CN_BENCH_FORWARDERS         "bench_forwarders"
+#define CN_ARP_SENDERS              "arp_senders"
 
 /*
  * Counter configurable fields
