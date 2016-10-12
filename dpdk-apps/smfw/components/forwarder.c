@@ -56,7 +56,7 @@ forwarder_receive_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 		}
 
 		// remove ether header
-		rte_pktmbuf_adj(m_clone, sizeof(struct ether_hdr));
+		rte_pktmbuf_adj(m_clone, sizeof(struct ether_addr) *2);
 
 		// prepend new ether header:
 		rte_pktmbuf_chain(header, m_clone);
@@ -66,14 +66,16 @@ forwarder_receive_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 		send_i += 1;
 	}
 
+    diff = clock() - start;
+    forwarder->time += diff * 1000.0 / CLOCKS_PER_SEC;
+
 	int send = 0;//tx_put(forwarder->tx, forwarder->send_buf, send_i);
 	while (send < send_i) {
 		send += tx_put(forwarder->tx, (forwarder->send_buf + send), send_i - send);
+		forwarder->nb_tries += 1;
 	}
 	forwarder->pkts_send += send;
-	
-	diff = clock() - start;
-	forwarder->time += diff * 1000.0 / CLOCKS_PER_SEC;
+	forwarder->nb_polls += 1;
 	forwarder->nb_measurements += nb_rx;
 }
 
@@ -88,8 +90,12 @@ log_forwarder(struct forwarder_t *f) {
 	RTE_LOG(INFO, FORWARDER, "| Packets send:     %"PRIu64"\n", f->pkts_send);
 	RTE_LOG(INFO, FORWARDER, "| Packets dropped:  %"PRIu64"\n", f->pkts_dropped);
 	RTE_LOG(INFO, FORWARDER, "| Packets failed:   %"PRIu64"\n", f->pkts_failed);
+	if (f->nb_polls != 0)
+		RTE_LOG(INFO, FORWARDER, "| Tries:            %"PRIu64"\n", f->nb_tries/f->nb_polls);
 	RTE_LOG(INFO, FORWARDER, "| Time:             %f\n", f->time/f->nb_measurements);
 	RTE_LOG(INFO, FORWARDER, "-------------------------------------\n");
+	f->nb_polls = 0;
+	f->nb_tries = 0;
 }
 
 static int
@@ -160,6 +166,8 @@ get_forwarder(config_setting_t *f_conf,
 	forwarder->pkts_send = 0;
 	forwarder->pkts_dropped = 0;
 	forwarder->pkts_failed = 0;
+	forwarder->nb_polls = 0;
+	forwarder->nb_tries = 0;
 	forwarder->nb_mbuf = 0;
 	forwarder->time = 0.0;
 	forwarder->nb_measurements = 0.0;
@@ -173,13 +181,14 @@ get_forwarder(config_setting_t *f_conf,
 		RTE_LOG(ERR, FORWARDER, "Could not alloc pktmbuf.\n");
 		return 1;
 	}
-	forwarder->eth_hdr->data_len = sizeof(struct ether_hdr);
+    forwarder->eth_hdr->data_len = sizeof(struct ether_addr) *2;
+    forwarder->eth_hdr->pkt_len = sizeof(struct ether_addr) *2;
 
-	struct ether_hdr *eth = rte_pktmbuf_mtod(forwarder->eth_hdr, struct ether_hdr *);
+	struct ether_addr *eth = rte_pktmbuf_mtod(forwarder->eth_hdr, struct ether_addr *);
 
-	eth->ether_type = rte_be_to_cpu_16(ETHER_TYPE_IPv4);
-	ether_addr_copy(&forwarder->send_port_mac, &eth->s_addr);
-	ether_addr_copy(&forwarder->dst_mac, &eth->d_addr);
+	ether_addr_copy(&forwarder->dst_mac, eth);
+	ether_addr_copy(&forwarder->send_port_mac, eth + 1);
+
 	print_packet_hex(forwarder->eth_hdr);
 	return 0;
 }

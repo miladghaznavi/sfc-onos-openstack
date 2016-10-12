@@ -25,11 +25,15 @@ struct forwarder_t {
 
 	bool decap_on_send;
 
+	//stats
 	uint64_t pkts_received;
 	uint64_t pkts_send;
 	uint64_t pkts_dropped;
 	uint64_t pkts_failed;
+	uint64_t nb_polls;
+	uint64_t nb_tries;
 
+	//
 	struct rte_mbuf *eth_hdr;
 	struct rte_mempool *pkt_pool;
 	struct rte_mempool *clone_pool;

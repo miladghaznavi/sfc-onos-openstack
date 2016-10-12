@@ -10,6 +10,9 @@
 
 #define STOP_SEQ 0xFFFFFFFFFFFFFFFF
 #define CLOCKS_PER_U_SEC (CLOCKS_PER_SEC / 1000000)
+#define CLOCKS_PER_U_SEC (CLOCKS_PER_SEC / 1000000)
+#define ETHER_TYPE ETHER_TYPE_IPv4
+#define MAX_TRIES 10
 
 struct app_config;
 
@@ -32,7 +35,7 @@ struct bench_sender_t {
 	struct rte_mempool *pkt_pool;
 	struct rte_mempool *clone_pool;
 
-	u_second_t last_tx;
+	float last_tx;
 	uint64_t pkts_send;
 
 	uint64_t pkts_counter;
@@ -53,6 +56,7 @@ struct bench_sequence_t {
 	size_t nb_packets_send;
 	size_t pkt_per_sec;
 	unsigned ip_size;
+	unsigned send_end_packet;
 };
 
 void

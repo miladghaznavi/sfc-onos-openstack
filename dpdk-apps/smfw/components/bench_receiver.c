@@ -22,26 +22,32 @@
 #include <rte_udp.h>
 #include <rte_log.h>
 #include <rte_mbuf.h>
+#include <rte_branch_prediction.h>
 
 #define PKT_HDR_SIZE (sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr) + sizeof(struct udp_hdr))
 
 #define RTE_LOGTYPE_BENCH_RECEIVER RTE_LOGTYPE_USER1
 
+static void
+write_log_file(struct bench_receiver_t *br) {
+	size_t seq = br->cur_seq;
+	if (seq >= br->nb_names) return;
 
-static int
-open_log_file(struct bench_receiver_t *bench_receiver, int seq) {
-	if (bench_receiver->nb_file_names <= seq) return 1;
+	struct bench_statistic_t statistics = br->statistics;
 
-	bench_receiver->cur_seq = seq;
-	bench_receiver->cur_log_fd = fopen(bench_receiver->file_names[seq], "w");
-	fputs("'seq nb';'send';'receive';\n", bench_receiver->cur_log_fd);
+	fputs(br->sequence_names[seq], br->log_fd);
+	fprintf(br->log_fd, ";%f;", (float)br->statistics.sum_latency / (float)br->statistics.total_received);
 
-	return 0;
-}
+	fprintf(br->log_fd, "%"PRIu64";", br->statistics.first_send);
+	fprintf(br->log_fd, "%"PRIu64";", br->statistics.last_send);
+	fprintf(br->log_fd, "%"PRIu64";", br->statistics.first_received);
+	fprintf(br->log_fd, "%"PRIu64";", br->statistics.last_received);
+	fprintf(br->log_fd, "%"PRIu64";", br->statistics.total_received);
+	fputs("\n", br->log_fd);
+	fflush(br->log_fd);
 
-static int
-open_next_log(struct bench_receiver_t *bench_receiver) {
-	return open_log_file(bench_receiver, bench_receiver->cur_seq+1);
+	// clear statistics
+	memset(&br->statistics, 0, sizeof(struct bench_statistic_t));
 }
 
 uint64_t
@@ -56,7 +62,7 @@ extract_timestamp(struct rte_mbuf *m, uint16_t udp_port, uint64_t **ptr_timestam
 
 	eth_hdr = rte_pktmbuf_mtod(m, struct ether_hdr *);
 
-	if (eth_hdr->ether_type != rte_cpu_to_be_16(ETHER_TYPE_IPv4)) return 0;
+	if (eth_hdr->ether_type != rte_cpu_to_be_16(ETHER_TYPE)) return 0;
 
 	if (m->data_len < PKT_HDR_SIZE + sizeof(uint64_t)) return 0;
 
@@ -82,48 +88,60 @@ void
 log_bench_receiver(struct bench_receiver_t *br) {
 	RTE_LOG(INFO, BENCH_RECEIVER, "------------- Bench Receiver -------------\n");
 	RTE_LOG(INFO, BENCH_RECEIVER, "| In port:                %"PRIu16"\n", br->rx->in_port);
-	if (br->cur_seq < br->nb_file_names)
-		RTE_LOG(INFO, BENCH_RECEIVER, "| Log file:               %s\n", br->file_names[br->cur_seq]);
+	if (br->cur_seq < br->nb_names) {
+		RTE_LOG(INFO, BENCH_RECEIVER, "| Log file:               %s\n", br->file_name);
+		RTE_LOG(INFO, BENCH_RECEIVER, "| Sequence name:          %s\n", br->sequence_names[br->cur_seq]);
+	}
 	RTE_LOG(INFO, BENCH_RECEIVER, "| Packets received:       %"PRIu64"\n", br->pkts_received);
 	RTE_LOG(INFO, BENCH_RECEIVER, "| Packets skiped:         %"PRIu64"\n", br->pkts_skiped);
-	RTE_LOG(INFO, BENCH_RECEIVER, "| Avg. transmission time: %.2fms\n", 
-										(float) us_to_ms(br->travel_tm) / (float)br->pkts_received);
+	if (br->statistics.total_received != 0) {
+		uint64_t send_time = br->statistics.last_send - br->statistics.first_send;
+		RTE_LOG(INFO, BENCH_RECEIVER, "| PPS:                    %.1f\n", 
+			((float) br->statistics.total_received / (float) send_time) * US_PER_S);
+		RTE_LOG(INFO, BENCH_RECEIVER, "| Avg. transmission time: %.4fus\n", 
+			(float)br->statistics.sum_latency / (float) br->statistics.total_received);
+	}
 	RTE_LOG(INFO, BENCH_RECEIVER, "------------------------------------------\n");
 }
 
 void
 bench_receiver_receive_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 	if (nb_rx == 0) return;
-	struct bench_receiver_t *bench_receiver = (struct bench_receiver_t *) arg;
+	struct bench_receiver_t *br = (struct bench_receiver_t *) arg;
 
 	uint64_t time = (double) clock() / (double) CLOCKS_PER_U_SEC;
 
 	for (unsigned index = 0; index < nb_rx; ++index) {
 		uint64_t* timestamps;
 		unsigned nb_timestamps = extract_timestamp(buffer[index], 
-			bench_receiver->udp_in_port, &timestamps);
+			br->udp_in_port, &timestamps);
 	
 		if (nb_timestamps > 1) {
 			uint64_t seq_nb = timestamps[0];
 			uint64_t send_tm = timestamps[1];
-		
+			
+			br->statistics.sum_latency += time - send_tm;
+			
+			br->statistics.total_received++;
+			br->pkts_received++;
 
-			// Save values
-
-			for (unsigned i = 0; i < nb_timestamps; ++i) {
-				fprintf(bench_receiver->cur_log_fd, "%"PRIu64";", timestamps[i]);
+			if (unlikely(seq_nb == STOP_SEQ)) {
+				write_log_file(br);
+				br->cur_seq++;
+				if (br->cur_seq >= br->nb_names) {
+					RTE_LOG(ERR, BENCH_RECEIVER, "Last packet received! Exiting.\n");
+					raise(SIGTERM);
+				}
+			} else if (unlikely(br->statistics.first_send == 0)) {
+				br->statistics.first_send = send_tm;
+				br->statistics.first_received = time;
+			} else {
+				br->statistics.last_send = send_tm;
+				br->statistics.last_received = time;
 			}
-			fprintf(bench_receiver->cur_log_fd, "%"PRIu64";", time);
-			fputs("\n", bench_receiver->cur_log_fd);
-
-			bench_receiver->pkts_received += 1;
-			bench_receiver->travel_tm += time - send_tm;
-			if (seq_nb == STOP_SEQ && open_next_log(bench_receiver) != 0) {
-                raise(SIGTERM);
-			} 
 
 		} else {
-			bench_receiver->pkts_skiped += 1;
+			br->pkts_skiped += 1;
 		}
 	}
 }
@@ -152,38 +170,73 @@ get_bench_receiver(config_setting_t *br_conf,
 		return 1;
 	}
 
-	// Log files
-	config_setting_t *log_file_names = config_setting_lookup(br_conf, CN_LOG_FILES);
-	if (log_file_names == NULL) {
-		bench_receiver->nb_file_names = 0;
-		RTE_LOG(INFO, BENCH_RECEIVER, "No file names.");
-		return 0;
+	// sequence Names
+	config_setting_t *sequences_conf = config_setting_lookup(br_conf, CN_SEQUENCE);
+	if (sequences_conf == NULL) {
+		bench_receiver->nb_names = 0;
+		RTE_LOG(INFO, BENCH_RECEIVER, "No sequence names.\n");
+		return 1;
 	}
 
-	bench_receiver->nb_file_names = config_setting_length(log_file_names);
-	bench_receiver->file_names = rte_malloc(NULL, sizeof(char*) * bench_receiver->nb_file_names, 64);
+	bench_receiver->nb_names = config_setting_length(sequences_conf);
+	RTE_LOG(INFO, BENCH_RECEIVER, "Make space for %"PRIu64" names.\n", bench_receiver->nb_names);
+	bench_receiver->sequence_names = rte_malloc(NULL, sizeof(char*) * bench_receiver->nb_names, 64);
 
-	for (size_t i = 0; i < bench_receiver->nb_file_names; i++) {
-		const char *file_name = config_setting_get_string_elem(log_file_names, i);
-		if (file_name == NULL) {
-			RTE_LOG(ERR, BENCH_RECEIVER, "Could not read log file name.\n");
+	char sequence_name[90];
+	for (size_t i = 0; i < bench_receiver->nb_names; i++) {
+		config_setting_t *s_conf = config_setting_get_elem(sequences_conf, i);
+		uint64_t pkt_per_sec;
+		uint64_t nb_packets;
+		uint64_t ip_size;
+
+		// INTERVAL
+		if (config_setting_lookup_int64(s_conf, CN_PKT_PER_SEC, (long long int *) &pkt_per_sec) != CONFIG_TRUE) {
+			RTE_LOG(ERR, BENCH_RECEIVER, "Could not read %s.\n", CN_PKT_PER_SEC);
 			return 1;
 		}
-		bench_receiver->file_names[i] = rte_malloc(NULL, (strlen(file_name) + 1) * sizeof(char), 64);
-		strcpy(bench_receiver->file_names[i], file_name);
+	
+		// PACKET NUMBER
+		if (config_setting_lookup_int64(s_conf, CN_PACKET_NB, (long long int *) &nb_packets) != CONFIG_TRUE) {
+			RTE_LOG(ERR, BENCH_RECEIVER, "Could not read %s.\n", CN_PACKET_NB);
+			return 1;
+		}
+	
+		// PACKET SIZE
+		if (config_setting_lookup_int64(s_conf, CN_PACKET_SIZE, (long long int *) &ip_size) != CONFIG_TRUE) {
+			RTE_LOG(ERR, BENCH_RECEIVER, "Could not read %s.\n", CN_PACKET_SIZE);
+			return 1;
+		}
 
+		size_t size = sprintf(sequence_name, "%"PRIu64"B_%"PRIu64"nb_%"PRIu64"Hz", ip_size, nb_packets, pkt_per_sec);
+		bench_receiver->sequence_names[i] = rte_malloc(NULL, size + 1, 64);
+		strcpy(bench_receiver->sequence_names[i], sequence_name);
+	}
+
+	// file Name
+	const char *file_name;
+	if (config_setting_lookup_string(br_conf, CN_LOG_FILE, &file_name) != CONFIG_TRUE) {
+		RTE_LOG(INFO, BENCH_RECEIVER, "No file name.");
+		return 1;
+	} else {
+		bench_receiver->file_name = rte_malloc(NULL, (strlen(file_name) + 1) * sizeof(char), 64);
+		strcpy(bench_receiver->file_name, file_name);
+		bench_receiver->file_name[strlen(file_name)] = '\0';
 	}
 
 	// init other fields:
 	bench_receiver->pkts_received = 0;
-	bench_receiver->travel_tm = 0;
 	bench_receiver->pkts_skiped = 0;
 	bench_receiver->cur_seq = 0;
 
-	if (open_log_file(bench_receiver, 0) != 0) {
-		RTE_LOG(ERR, BENCH_RECEIVER, "Could not open log file.\n");
-		return 1;
-	}
+	bench_receiver->statistics.first_send = 0;
+	bench_receiver->statistics.last_send = 0;
+	bench_receiver->statistics.first_received = 0;
+	bench_receiver->statistics.last_received = 0;
+	bench_receiver->statistics.total_received = 0;
+	bench_receiver->statistics.sum_latency = 0;
+
+	bench_receiver->log_fd = fopen(bench_receiver->file_name, "w");
+	fputs("name;Latency (us);First Send (us);Last Send (us);First Received (us);Last Received (us);Total Received;\n", bench_receiver->log_fd);
 
 	log_bench_receiver(bench_receiver);
 	return 0;
@@ -191,9 +244,6 @@ get_bench_receiver(config_setting_t *br_conf,
 
 int
 free_bench_receiver(struct bench_receiver_t *bench_receiver) {
-
-	if (fclose(bench_receiver->cur_log_fd) != 0) {
-		RTE_LOG(ERR, BENCH_RECEIVER, "Could not write to log file.\n");
-	}
+	fclose(bench_receiver->log_fd);
 	rte_free(bench_receiver);
 }

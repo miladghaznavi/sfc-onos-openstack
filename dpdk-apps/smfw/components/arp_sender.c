@@ -40,7 +40,7 @@ gen_arp_packet(struct arp_sender_t *arp_sender) {
 	arp_payload->arp_sip = rte_cpu_to_be_32(arp_sender->src_ip);
 	ether_addr_copy(&arp_sender->dst_mac, &arp_payload->arp_tha);
 	arp_payload->arp_tip = rte_cpu_to_be_32(arp_sender->dst_ip);
-	print_packet_hex(packet);
+
 	return packet;
 }
 

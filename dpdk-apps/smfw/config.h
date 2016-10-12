@@ -22,7 +22,6 @@
         
 #define CN_PKT_PER_SEC              "packet_per_sec"
         
-#define CN_LOG_FILE                 "log_file"
         
 #define CN_TX_ID                    "sender_id"
 #define CN_RX_ID                    "receiver_id"
@@ -63,6 +62,7 @@
 #define CN_PACKET_NB                "packet_nb"
 #define CN_PACKET_SIZE              "packet_size"
 
-#define CN_LOG_FILES                "sequence_log_name"
+#define CN_LOG_NAMES                "sequence_log_name"
+#define CN_LOG_FILE                 "log_file"
 
 #endif /* CONFIG_H_ */

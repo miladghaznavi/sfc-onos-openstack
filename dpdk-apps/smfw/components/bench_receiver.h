@@ -11,6 +11,15 @@
 
 struct app_config;
 
+struct bench_statistic_t {
+    uint64_t first_send;        //us
+    uint64_t last_send;         //us
+    uint64_t first_received;    //us
+    uint64_t last_received;     //us
+    uint64_t total_received;    //packets
+    uint64_t sum_latency;       //us
+};
+
 struct bench_receiver_t {
     /** Port on which we receive packets to replicate */
     struct receiver_t *rx;
@@ -18,9 +27,10 @@ struct bench_receiver_t {
     unsigned udp_in_port;
 
     size_t cur_seq;
-    size_t nb_file_names;
-    char **file_names;
-    FILE *cur_log_fd;
+    size_t nb_names;
+    char **sequence_names;
+    char *file_name;
+    FILE *log_fd;
 
     /*  
      * Fields for statistics
@@ -29,11 +39,10 @@ struct bench_receiver_t {
     /* Number of bench packets received. */
     uint64_t pkts_received;
 
-    /* Sum of time bench packets traveled. */
-    u_second_t travel_tm;
-
     /* Number of unknown packets received. */
     uint64_t pkts_skiped;
+
+    struct bench_statistic_t statistics;
 
 };
 
@@ -51,5 +60,7 @@ get_bench_receiver(config_setting_t *br_conf,
                 struct app_config *appconfig, 
                 struct bench_receiver_t *bench_receiver);
 
+int
+free_bench_receiver(struct bench_receiver_t *bench_receiver);
 
 #endif /* BENCH_RECEIVER_H_ */

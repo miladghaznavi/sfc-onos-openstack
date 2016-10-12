@@ -52,11 +52,11 @@ poll_receiver(struct receiver_t *receiver) {
     }
     for (unsigned p_index = 0; p_index < nb_rx; ++p_index) {
         // rte_pktmbuf_free(pkts_burst[p_index]);
-        if (rte_mbuf_refcnt_read(pkts_burst[p_index]) > 1) {
-            rte_mbuf_refcnt_update(pkts_burst[p_index], -1);
-        } else {
+        // if (rte_mbuf_refcnt_read(pkts_burst[p_index]) > 1) {
+        //     rte_mbuf_refcnt_update(pkts_burst[p_index], -1);
+        // } else {
             rte_pktmbuf_free(pkts_burst[p_index]);
-        }
+        // }
     }
 
     // diff = clock() - start;

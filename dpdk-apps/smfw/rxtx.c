@@ -32,16 +32,15 @@ tx_create_immediate(unsigned port, unsigned queue) {
 	return this;
 }
 
-int
+inline int
 tx_put(struct transmit_t *this, struct rte_mbuf **ms, int nb_tx) {
-	double now = cycles_to_ns(rte_get_timer_cycles(), this->hz);
+	// double now = cycles_to_ns(rte_get_timer_cycles(), this->hz);
 
-	/* send arp packet if timeout is reached */
-	if (unlikely(this->arp_sender != NULL &&
-		now - this->last_transmit > this->arp_sender->timeout * NS_PER_S)) {
-		poll_arp_sender(this->arp_sender);
-	}
-
-	this->last_transmit = now;
+	// /* send arp packet if timeout is reached */
+	// if (unlikely(this->arp_sender != NULL &&
+	// 	now - this->last_transmit > this->arp_sender->timeout * NS_PER_S)) {
+	// 	poll_arp_sender(this->arp_sender);
+	// }
+	// this->last_transmit = now;
 	return rte_eth_tx_burst(this->port, this->queue, ms, nb_tx);
 }

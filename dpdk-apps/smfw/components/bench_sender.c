@@ -15,6 +15,7 @@
 #include <time.h>
 #include <sys/time.h>
 #include <libconfig.h>
+#include <math.h>
 
 #include <rte_malloc.h>
 #include <rte_ether.h>
@@ -26,8 +27,8 @@
 #define RTE_LOGTYPE_BENCH_SENDER RTE_LOGTYPE_USER3
 
 #define SOURCE_UDP_PORT 0
-#define BUFF_TIME_B4_SWITCH 1000 //ms
-#define BUFF_TIME_AFTR_SWITCH 1000 //ms
+#define BUFF_TIME_B4_SWITCH 2000 //ms
+#define BUFF_TIME_AFTR_SWITCH 2000 //ms
 
 void
 gen_prototype(struct bench_sender_t *bench_sender, uint32_t msg_size, uint32_t ip_size) {
@@ -51,7 +52,7 @@ gen_prototype(struct bench_sender_t *bench_sender, uint32_t msg_size, uint32_t i
 
 		ether_addr_copy(&bench_sender->tx->send_port_mac, &eth_hdr->s_addr);
 		ether_addr_copy(&bench_sender->dst_mac, &eth_hdr->d_addr);
-		eth_hdr->ether_type = rte_cpu_to_be_16(ETHER_TYPE_IPv4);
+		eth_hdr->ether_type = rte_cpu_to_be_16(ETHER_TYPE);
 	
 		ip_hdr = rte_pktmbuf_mtod_offset(m, struct ipv4_hdr *, sizeof(struct ether_hdr));
 
@@ -113,14 +114,14 @@ gen_packet(struct bench_sender_t *bench_sender, char *msg, uint32_t msg_size, ui
 
 void
 poll_bench_sender(struct bench_sender_t *bench_sender) {
-	if (bench_sender->cur_sequence >= bench_sender->nb_sequences) return;
+	if (unlikely(bench_sender->cur_sequence >= bench_sender->nb_sequences)) return;
 
 	// get time and current sequence config
-	u_second_t time = (double) clock() / (double) CLOCKS_PER_U_SEC;
+	float time = clock() / (float) CLOCKS_PER_U_SEC;
 	struct bench_sequence_t *sequence = bench_sender->sequences[bench_sender->cur_sequence];
 
 	// check if we have to wait between sequences
-	if (sequence->nb_packets_send >= sequence->nb_packets) {
+	if (unlikely(sequence->nb_packets_send >= sequence->nb_packets)) {
 
 		// sequence N -- NOW --- END-SEQ-PCKT ----- sequence N+1 (or end...)
 		if (time - bench_sender->last_tx > ms_to_us(BUFF_TIME_B4_SWITCH) && 
@@ -137,17 +138,20 @@ poll_bench_sender(struct bench_sender_t *bench_sender) {
 				send = tx_put(bench_sender->tx, &m, 1);
 			}
 			sequence->nb_packets_send++;
-		} else if (time - bench_sender->last_tx > ms_to_us(BUFF_TIME_B4_SWITCH) + ms_to_us(BUFF_TIME_AFTR_SWITCH)) {
+			return;
+		} else if (time - bench_sender->last_tx > 
+			ms_to_us(BUFF_TIME_B4_SWITCH) + ms_to_us(BUFF_TIME_AFTR_SWITCH)) {
 		// sequence N ----- (END-SEQ-PCKT) ------ NOW ----- sequence N+1 (or end...)
 			bench_sender->cur_sequence++;
 			bench_sender->last_tx = time;
-
-		} 
-		return;
+            if (bench_sender->cur_sequence >= bench_sender->nb_sequences) return;
+			sequence = bench_sender->sequences[bench_sender->cur_sequence];
+		} else return;
 	}
 
 	// determine the number of packets to send
-	uint64_t send_count = ((time - bench_sender->last_tx) * sequence->pkt_per_sec) / ms_to_us(s_to_ms(1));
+	uint64_t elapsed_time = time - bench_sender->last_tx;
+	uint64_t send_count = elapsed_time * sequence->pkt_per_sec / (float) US_PER_S;
 
 	// check that packet count is valid
 	if (send_count == 0) return;
@@ -171,10 +175,17 @@ poll_bench_sender(struct bench_sender_t *bench_sender) {
 	}
 
 	// send the generated packets
-	int send = 0;
-	while (send < send_count) {
-		send += tx_put(bench_sender->tx, (bench_sender->send_buf + send), send_count - send);
-	}
+	// int send = tx_put(bench_sender->tx, bench_sender->send_buf, send_count);
+    int send = 0;
+    int tries = 0;
+    while (send < send_count && tries < MAX_TRIES) {
+        send += tx_put(bench_sender->tx, (bench_sender->send_buf + send), send_count - send);
+        tries++;
+    }
+	for (size_t not_send = send; not_send < send_count; not_send++) {
+        rte_pktmbuf_free(bench_sender->send_buf[not_send]);
+    }
+
 	sequence->nb_packets_send += send;
 	bench_sender->pkts_send += send;
 
@@ -182,9 +193,8 @@ poll_bench_sender(struct bench_sender_t *bench_sender) {
 	bench_sender->pkts_counter += send;
 	bench_sender->poll_counter += 1;
 
-
 	// remember the time!
-    bench_sender->last_tx = time;
+    bench_sender->last_tx += elapsed_time * (send / (float) send_count);
 }
 
 void
@@ -197,9 +207,9 @@ log_bench_sender(struct bench_sender_t *bs) {
 	RTE_LOG(INFO, BENCH_SENDER, "| UDP estination port: %"PRIu16"\n", bs->dst_udp_port);
 	RTE_LOG(INFO, BENCH_SENDER, "| Packet send:         %"PRIu64"\n", bs->pkts_send);
 	if (bs->poll_counter != 0)
-		RTE_LOG(INFO, BENCH_SENDER, "| send per poll:       %"PRIu64"/%"PRIu64"\n", 
-			bs->pkts_counter / bs->poll_counter, bs->should_pkts_counter / bs->poll_counter);
-	RTE_LOG(INFO, BENCH_SENDER, "| Sequence:            %"PRIu64"\n", bs->cur_sequence);
+		RTE_LOG(INFO, BENCH_SENDER, "| send per poll:       %.2f/%"PRIu64"\n", 
+			bs->pkts_counter / (float)bs->poll_counter, bs->should_pkts_counter / bs->poll_counter);
+	RTE_LOG(INFO, BENCH_SENDER, "| Sequence:            %"PRIu64"/%"PRIu64"\n", bs->cur_sequence, bs->nb_sequences);
 	if (bs->cur_sequence < bs->nb_sequences)
 		RTE_LOG(INFO, BENCH_SENDER, "| - progress:      %"PRIu64"/%"PRIu64"\n", 
 			bs->sequences[bs->cur_sequence]->nb_packets_send, 
@@ -325,7 +335,7 @@ get_bench_sender(config_setting_t *bs_conf,
 		config_setting_t *sequences_conf = config_setting_lookup(bs_conf, CN_SEQUENCE);
 		if (sequences_conf == NULL) {
 			RTE_LOG(INFO, BENCH_SENDER, "No sequence.");
-			return 0;
+			return 1;
 		}
 		bench_sender->nb_sequences = config_setting_length(sequences_conf);
 		bench_sender->cur_sequence = 0;
