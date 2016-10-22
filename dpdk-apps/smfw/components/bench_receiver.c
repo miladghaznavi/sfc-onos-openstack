@@ -36,7 +36,7 @@ write_log_file(struct bench_receiver_t *br) {
 	struct bench_statistic_t statistics = br->statistics;
 
 	fputs(br->sequence_names[seq], br->log_fd);
-	fprintf(br->log_fd, ";%f;", (float)br->statistics.sum_latency / (float)br->statistics.total_received);
+	fprintf(br->log_fd, "%f;", (float)br->statistics.sum_latency / (float)br->statistics.total_received);
 
 	fprintf(br->log_fd, "%"PRIu64";", br->statistics.first_send);
 	fprintf(br->log_fd, "%"PRIu64";", br->statistics.last_send);
@@ -207,7 +207,7 @@ get_bench_receiver(config_setting_t *br_conf,
 			return 1;
 		}
 
-		size_t size = sprintf(sequence_name, "%"PRIu64"B_%"PRIu64"nb_%"PRIu64"Hz", ip_size, nb_packets, pkt_per_sec);
+		size_t size = sprintf(sequence_name, "%"PRIu64";%"PRIu64";%"PRIu64";", ip_size, nb_packets, pkt_per_sec);
 		bench_receiver->sequence_names[i] = rte_malloc(NULL, size + 1, 64);
 		strcpy(bench_receiver->sequence_names[i], sequence_name);
 	}
@@ -236,7 +236,7 @@ get_bench_receiver(config_setting_t *br_conf,
 	bench_receiver->statistics.sum_latency = 0;
 
 	bench_receiver->log_fd = fopen(bench_receiver->file_name, "w");
-	fputs("name;Latency (us);First Send (us);Last Send (us);First Received (us);Last Received (us);Total Received;\n", bench_receiver->log_fd);
+	fputs("b;nb;Hz;Latency (us);First Send (us);Last Send (us);First Received (us);Last Received (us);Total Received;\n", bench_receiver->log_fd);
 
 	log_bench_receiver(bench_receiver);
 	return 0;

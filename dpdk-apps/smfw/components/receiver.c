@@ -4,11 +4,12 @@
 #include "../parse.h"
 
 #include <libconfig.h>
-#include <time.h>
+// #include <time.h>
 
 #include <rte_malloc.h>
 #include <rte_log.h>
 #include <rte_ether.h>
+#include <rte_cycles.h>
 
 
 #define RTE_LOGTYPE_RECEIVER RTE_LOGTYPE_USER1
@@ -22,7 +23,7 @@ log_receiver(struct receiver_t *receiver) {
     RTE_LOG(INFO, RECEIVER, "| Packets received: %"PRIu64"\n", receiver->pkts_received);
     if (receiver->nb_polls != 0)
         RTE_LOG(INFO, RECEIVER, "| Load:             %f\n", receiver->nb_rec / (float) receiver->nb_polls);
-    // RTE_LOG(INFO, RECEIVER, "| Time:             %f\n", receiver->time/receiver->nb_measurements);
+    RTE_LOG(INFO, RECEIVER, "| Time:             %f\n", receiver->time /(float) receiver->nb_measurements);
     RTE_LOG(INFO, RECEIVER, "------------------------------------\n");
 
     receiver->nb_polls = 0;
@@ -34,7 +35,7 @@ poll_receiver(struct receiver_t *receiver) {
     const uint16_t port = receiver->in_port;
     struct rte_mbuf **pkts_burst = receiver->burst_buffer;
 
-    // clock_t start = clock(), diff;
+    uint64_t start = rte_get_tsc_cycles();
 
     uint64_t nb_rx = rte_eth_rx_burst((uint8_t) port, 0,
                     pkts_burst, BURST_SIZE);
@@ -59,9 +60,8 @@ poll_receiver(struct receiver_t *receiver) {
         // }
     }
 
-    // diff = clock() - start;
-    // receiver->time += diff * 1000.0 / CLOCKS_PER_SEC;
-    // receiver->nb_measurements += nb_rx;
+    receiver->time += rte_get_tsc_cycles() - start;
+    receiver->nb_measurements += nb_rx;
 }
 
 void

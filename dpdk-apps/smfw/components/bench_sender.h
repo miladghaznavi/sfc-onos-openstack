@@ -10,7 +10,6 @@
 
 #define STOP_SEQ 0xFFFFFFFFFFFFFFFF
 #define CLOCKS_PER_U_SEC (CLOCKS_PER_SEC / 1000000)
-#define CLOCKS_PER_U_SEC (CLOCKS_PER_SEC / 1000000)
 #define ETHER_TYPE ETHER_TYPE_IPv4
 #define MAX_TRIES 10
 
@@ -35,7 +34,7 @@ struct bench_sender_t {
 	struct rte_mempool *pkt_pool;
 	struct rte_mempool *clone_pool;
 
-	float last_tx;
+	double last_tx;
 	uint64_t pkts_send;
 
 	uint64_t pkts_counter;

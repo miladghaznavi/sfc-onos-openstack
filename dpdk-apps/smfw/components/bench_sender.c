@@ -117,7 +117,7 @@ poll_bench_sender(struct bench_sender_t *bench_sender) {
 	if (unlikely(bench_sender->cur_sequence >= bench_sender->nb_sequences)) return;
 
 	// get time and current sequence config
-	float time = clock() / (float) CLOCKS_PER_U_SEC;
+	double time = clock() / (double) CLOCKS_PER_U_SEC;
 	struct bench_sequence_t *sequence = bench_sender->sequences[bench_sender->cur_sequence];
 
 	// check if we have to wait between sequences
@@ -150,7 +150,7 @@ poll_bench_sender(struct bench_sender_t *bench_sender) {
 	}
 
 	// determine the number of packets to send
-	uint64_t elapsed_time = time - bench_sender->last_tx;
+	double elapsed_time = time - bench_sender->last_tx;
 	uint64_t send_count = elapsed_time * sequence->pkt_per_sec / (float) US_PER_S;
 
 	// check that packet count is valid
@@ -194,7 +194,7 @@ poll_bench_sender(struct bench_sender_t *bench_sender) {
 	bench_sender->poll_counter += 1;
 
 	// remember the time!
-    bench_sender->last_tx += elapsed_time * (send / (float) send_count);
+    bench_sender->last_tx += elapsed_time * (send / (double) send_count);
 }
 
 void
