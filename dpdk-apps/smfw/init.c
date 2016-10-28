@@ -196,7 +196,7 @@ initialize_port(uint8_t portid, struct rte_mempool* mempool, uint16_t rx_queues,
 	for (unsigned i = 0; i < tx_queues; i++) {
 		fflush(stdout);
 		int tx_setup = rte_eth_tx_queue_setup(portid, i, NB_TXD,
-			rte_eth_dev_socket_id(portid), txconf);
+			rte_eth_dev_socket_id(portid), NULL);//txconf);
 		if (tx_setup < 0) {
 			RTE_LOG(INFO, PORT_INIT, "tx setup ERROR %d\n", tx_setup);
 			return 1;
