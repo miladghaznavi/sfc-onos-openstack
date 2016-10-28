@@ -171,7 +171,7 @@ get_bench_receiver(config_setting_t *br_conf,
 	}
 
 	// sequence Names
-	config_setting_t *sequences_conf = config_setting_lookup(br_conf, CN_SEQUENCE);
+	config_setting_t *sequences_conf = config_setting_get_member(br_conf, CN_SEQUENCE);
 	if (sequences_conf == NULL) {
 		bench_receiver->nb_names = 0;
 		RTE_LOG(INFO, BENCH_RECEIVER, "No sequence names.\n");
@@ -234,6 +234,7 @@ get_bench_receiver(config_setting_t *br_conf,
 	bench_receiver->statistics.last_received = 0;
 	bench_receiver->statistics.total_received = 0;
 	bench_receiver->statistics.sum_latency = 0;
+	RTE_LOG(INFO, BENCH_RECEIVER, "done.\n");
 
 	bench_receiver->log_fd = fopen(bench_receiver->file_name, "w");
 	fputs("b;nb;Hz;Latency (us);First Send (us);Last Send (us);First Received (us);Last Received (us);Total Received;\n", bench_receiver->log_fd);

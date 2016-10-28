@@ -35,7 +35,7 @@
 #define RTE_TEST_RX_DESC_DEFAULT 128
 #define RTE_TEST_TX_DESC_DEFAULT 512
 
-#define MBUF_SIZE 1600
+#define MBUF_SIZE RTE_MBUF_DEFAULT_BUF_SIZE
 
 #define NB_RXD RTE_TEST_RX_DESC_DEFAULT
 #define NB_TXD RTE_TEST_TX_DESC_DEFAULT
@@ -191,10 +191,12 @@ initialize_port(uint8_t portid, struct rte_mempool* mempool, uint16_t rx_queues,
 	}
 	
 	// Initialize TX-queues for each port.
+	struct rte_eth_txconf *txconf = &dev_info.default_txconf;
+	txconf->txq_flags = 0;
 	for (unsigned i = 0; i < tx_queues; i++) {
 		fflush(stdout);
 		int tx_setup = rte_eth_tx_queue_setup(portid, i, NB_TXD,
-			rte_eth_dev_socket_id(portid), NULL);
+			rte_eth_dev_socket_id(portid), txconf);
 		if (tx_setup < 0) {
 			RTE_LOG(INFO, PORT_INIT, "tx setup ERROR %d\n", tx_setup);
 			return 1;
@@ -208,7 +210,7 @@ initialize_port(uint8_t portid, struct rte_mempool* mempool, uint16_t rx_queues,
 		return 1;
 	}
 	
-	// rte_eth_promiscuous_enable(portid);
+	rte_eth_promiscuous_enable(portid);
 	
 	RTE_LOG(INFO, PORT_INIT, "OK, MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
 		ports_eth_addr[portid].addr_bytes[0],
@@ -558,7 +560,7 @@ read_config(const char * file, struct app_config * appconfig) {
 			return 1;
 		}
 	}
-
+	check_all_ports_link_status(appconfig->nb_ports, appconfig->enabled_ports);
 	/*
 	 * Core set up
 	 */

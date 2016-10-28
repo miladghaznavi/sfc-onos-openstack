@@ -159,7 +159,7 @@ tear_down(struct app_config *app_config) {
         printf(" Done\n");
     }
 
-    free(app_config);
+    rte_free(app_config);
 }
 
 /*
@@ -190,10 +190,9 @@ main(int argc, char *argv[]) {
     }
     
     /* Get the desired configuration */
-    appconfig = malloc(sizeof(struct app_config));
+    appconfig = rte_malloc(NULL, sizeof(struct app_config), 64);
     if (read_config(argv[1], appconfig) != 0)
         rte_exit(EXIT_FAILURE, "Configuration failed.\n");
-
 
     /* run main loop on worker cores */
     for (unsigned i = 1; i < appconfig->nb_cores; i++) {

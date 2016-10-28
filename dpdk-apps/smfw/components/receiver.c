@@ -23,11 +23,18 @@ log_receiver(struct receiver_t *receiver) {
     RTE_LOG(INFO, RECEIVER, "| Packets received: %"PRIu64"\n", receiver->pkts_received);
     if (receiver->nb_polls != 0)
         RTE_LOG(INFO, RECEIVER, "| Load:             %f\n", receiver->nb_rec / (float) receiver->nb_polls);
-    RTE_LOG(INFO, RECEIVER, "| Time:             %f\n", receiver->time /(float) receiver->nb_measurements);
-    RTE_LOG(INFO, RECEIVER, "------------------------------------\n");
+    RTE_LOG(INFO, RECEIVER, "| Time (CPU Cycles):%f\n", receiver->time /(float) receiver->nb_measurements);
+    RTE_LOG(INFO, RECEIVER, "|***********************************\n");
 
     receiver->nb_polls = 0;
     receiver->nb_rec = 0;
+
+    struct rte_eth_stats stats;
+    rte_eth_stats_get(receiver->in_port, &stats);
+
+    RTE_LOG(INFO, RECEIVER, "| RX: %"PRIu64" TX: %"PRIu64" \n", stats.ipackets, stats.opackets);
+    RTE_LOG(INFO, RECEIVER, "| RX dropped: %"PRIu64" RX error: %"PRIu64" TX error: %"PRIu64"\n", stats.imissed, stats.ierrors, stats.oerrors);
+    RTE_LOG(INFO, RECEIVER, "------------------------------------\n");
 }
 
 void
