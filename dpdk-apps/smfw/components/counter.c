@@ -30,6 +30,7 @@ fwd_to_wrapper(struct counter_t *counter, struct rte_mbuf *m, struct metadata_t 
 	struct ether_hdr *eth = rte_pktmbuf_mtod(m, struct ether_hdr *);
 
 	ether_addr_copy(&counter->next_mac, &eth->d_addr);
+	ether_addr_copy(&tx->send_port_mac, &eth->s_addr);
 	if (!counter->decap_on_send) {
 		wrapper_add_data(m, meta);
 	}
