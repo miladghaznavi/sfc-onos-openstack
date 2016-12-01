@@ -56,6 +56,8 @@ static const struct rte_eth_conf port_conf = {
 	},
 	.txmode = {
 		.mq_mode = ETH_MQ_TX_VMDQ_ONLY,
+		// .mq_mode = ETH_MQ_TX_VMDQ_ONLY,
+		// .mq_mode = ETH_MQ_TX_VMDQ_ONLY,
 	},
 };
 

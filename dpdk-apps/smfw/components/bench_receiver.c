@@ -45,9 +45,6 @@ write_log_file(struct bench_receiver_t *br) {
 	fprintf(br->log_fd, "%"PRIu64";", br->statistics.total_received);
 	fputs("\n", br->log_fd);
 	fflush(br->log_fd);
-
-	// clear statistics
-	memset(&br->statistics, 0, sizeof(struct bench_statistic_t));
 }
 
 uint64_t
@@ -62,13 +59,17 @@ extract_timestamp(struct rte_mbuf *m, uint16_t udp_port, uint64_t **ptr_timestam
 
 	eth_hdr = rte_pktmbuf_mtod(m, struct ether_hdr *);
 
+	// check ETHERTYPE
 	if (eth_hdr->ether_type != rte_cpu_to_be_16(ETHER_TYPE)) return 0;
 
+	// check PACKET SIZE
 	if (m->data_len < PKT_HDR_SIZE + sizeof(uint64_t)) return 0;
 
 	ip_hdr = rte_pktmbuf_mtod_offset(m, struct ipv4_hdr *, sizeof(struct ether_hdr));
 
+	// check Next PROTOCOL
 	if (ip_hdr->next_proto_id != IPPROTO_UDP) return 0;
+
 
 	udp_hdr = rte_pktmbuf_mtod_offset(m, struct udp_hdr *, 
 		sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr));
@@ -110,16 +111,27 @@ bench_receiver_receive_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 	struct bench_receiver_t *br = (struct bench_receiver_t *) arg;
 
 	uint64_t time = (double) clock() / (double) CLOCKS_PER_U_SEC;
-
+	struct ether_hdr *eth_hdr;
 	for (unsigned index = 0; index < nb_rx; ++index) {
+		// check MAC
+		eth_hdr = rte_pktmbuf_mtod(buffer[index], struct ether_hdr *);
+		if (!is_same_ether_addr(&br->rx->mac, &eth_hdr->d_addr)) continue;
+
 		uint64_t* timestamps;
 		unsigned nb_timestamps = extract_timestamp(buffer[index], 
 			br->udp_in_port, &timestamps);
-	
+		
 		if (nb_timestamps > 1) {
 			uint64_t seq_nb = timestamps[0];
 			uint64_t send_tm = timestamps[1];
 			
+			// for (unsigned i = 0; i < nb_timestamps; ++i) {
+			// 	fprintf(br->log_fd, "%"PRIu64";", timestamps[i]);
+			// }
+	
+			// fprintf(br->log_fd, "%"PRIu64";", time);
+			// fputs("\n", br->log_fd);
+
 			br->statistics.sum_latency += time - send_tm;
 			
 			br->statistics.total_received++;
@@ -127,6 +139,8 @@ bench_receiver_receive_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 
 			if (unlikely(seq_nb == STOP_SEQ)) {
 				write_log_file(br);
+				// clear statistics
+				memset(&br->statistics, 0, sizeof(struct bench_statistic_t));
 				br->cur_seq++;
 				if (br->cur_seq >= br->nb_names) {
 					RTE_LOG(ERR, BENCH_RECEIVER, "Last packet received! Exiting.\n");

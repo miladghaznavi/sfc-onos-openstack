@@ -14,6 +14,7 @@
 #include <rte_ether.h>
 #include <rte_log.h>
 #include <rte_byteorder.h>
+#include <rte_cycles.h>
 
 #define RTE_LOGTYPE_FORWARDER RTE_LOGTYPE_USER1
 
@@ -22,7 +23,7 @@ void
 forwarder_receive_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 	if (nb_rx == 0) return;
 
-	clock_t start = clock(), diff;
+	uint64_t start = rte_get_tsc_cycles(), diff;
 
 	struct forwarder_t *forwarder = (struct forwarder_t *) arg;
 	forwarder->pkts_received += nb_rx;
@@ -66,14 +67,14 @@ forwarder_receive_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 		send_i += 1;
 	}
 
-    diff = clock() - start;
-    forwarder->time += diff * 1000.0 / CLOCKS_PER_SEC;
 
 	int send = 0;//tx_put(forwarder->tx, forwarder->send_buf, send_i);
 	while (send < send_i) {
 		send += tx_put(forwarder->tx, (forwarder->send_buf + send), send_i - send);
 		forwarder->nb_tries += 1;
 	}
+    diff = rte_get_tsc_cycles() - start;
+    forwarder->time += diff;// * 1000.0 / rte_get_tsc_hz();
 	forwarder->pkts_send += send;
 	forwarder->nb_polls += 1;
 	forwarder->nb_measurements += nb_rx;

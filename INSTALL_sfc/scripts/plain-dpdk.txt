@@ -1,0 +1,19 @@
+// plain -> dpdk
+sudo mv /etc/libvirt/qemu.conf /etc/libvirt/qemu.conf.plain
+sudo mv /etc/libvirt/qemu.conf.dpdk /etc/libvirt/qemu.conf
+
+sudo mv /etc/apparmor.d/abstractions/libvirt-qemu /etc/apparmor.d/abstractions/libvirt-qemu.plain
+sudo mv /etc/apparmor.d/abstractions/libvirt-qemu.dpdk /etc/apparmor.d/abstractions/libvirt-qemu
+
+sudo mv /etc/default/qemu-kvm /etc/default/qemu-kvm.plain
+sudo mv /etc/default/qemu-kvm.dpdk /etc/default/qemu-kvm
+
+// dpdk -> plain
+sudo mv /etc/libvirt/qemu.conf /etc/libvirt/qemu.conf.dpdk
+sudo mv /etc/libvirt/qemu.conf.plain /etc/libvirt/qemu.conf
+
+sudo mv /etc/apparmor.d/abstractions/libvirt-qemu /etc/apparmor.d/abstractions/libvirt-qemu.dpdk
+sudo mv /etc/apparmor.d/abstractions/libvirt-qemu.plain /etc/apparmor.d/abstractions/libvirt-qemu
+
+sudo mv /etc/default/qemu-kvm /etc/default/qemu-kvm.dpdk
+sudo mv /etc/default/qemu-kvm.plain /etc/default/qemu-kvm

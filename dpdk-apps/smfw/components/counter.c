@@ -30,7 +30,7 @@ fwd_to_wrapper(struct counter_t *counter, struct rte_mbuf *m, struct metadata_t 
 	struct ether_hdr *eth = rte_pktmbuf_mtod(m, struct ether_hdr *);
 
 	ether_addr_copy(&counter->next_mac, &eth->d_addr);
-	ether_addr_copy(&tx->send_port_mac, &eth->s_addr);
+	ether_addr_copy(&counter->tx->send_port_mac, &eth->s_addr);
 	if (!counter->decap_on_send) {
 		wrapper_add_data(m, meta);
 	}
@@ -86,6 +86,7 @@ void
 counter_register_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 	if (nb_rx == 0) return;
 	struct counter_t *counter = (struct counter_t *) arg;
+		uint64_t start = rte_get_tsc_cycles(), diff;
 
 	if (nb_rx > rte_ring_free_count(counter->ring)) {
 		RTE_LOG(ERR, COUNTER, "Not enough free entries in ring!\n");
@@ -119,12 +120,14 @@ counter_register_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 							  "(%"PRIu32"/%"PRIu32") free: %"PRIu32"\n", n, nb_rx, 
 							  rte_ring_free_count(counter->ring));
 	}
+		diff = rte_get_tsc_cycles() - start;
+		counter->time += diff ;//* 1000.0 / rte_get_tsc_hz();
+	counter->nb_measurements += nb_rx;
 }
 
 void
 counter_firewall_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 	struct counter_t *counter = (struct counter_t *) arg;
-    clock_t start = clock(), diff;
 
 	poll_counter(counter);
 
@@ -146,6 +149,7 @@ counter_firewall_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 			RTE_LOG(INFO, COUNTER, "Wrong d_MAC... "FORMAT_MAC"\n", ARG_V_MAC(eth->d_addr));
 			continue;
 		}
+
 		entry = indextable_get(counter->indextable, buffer[i]);
 
 		if (entry != NULL) {
@@ -173,9 +177,6 @@ counter_firewall_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 
 	fwd_timedout_pkts(counter);
 
-    diff = clock() - start;
-    counter->time += diff * 1000.0 / CLOCKS_PER_SEC;
-    counter->nb_measurements += 1;
 }
 
 //| Firewall port MAC |   send port MAC   |      dst MAC      |

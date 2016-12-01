@@ -1,9 +1,12 @@
+sudo ovs-vsctl show
+
 regeln:
-	sudo ovs-ofctl -O openflow13 dump-flows <switch>
+	sudo ovs-ofctl dump-flows <switch>
 alle ports:
-	sudo ovs-ofctl -O OpenFlow13 show <switch>
+	sudo ovs-ofctl show <switch>
 
 gruppen:
-	sudo ovs-ofctl -O openflow13 dump-groups <switch>
+	sudo ovs-ofctl dump-groups <switch>
 
 
+OVS_PCI_MAPPINGS=0000:01:00.3

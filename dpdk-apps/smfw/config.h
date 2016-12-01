@@ -65,4 +65,6 @@
 #define CN_LOG_NAMES                "sequence_log_name"
 #define CN_LOG_FILE                 "log_file"
 
+#define CN_LOG_PACKETS              "log_packets"
+
 #endif /* CONFIG_H_ */

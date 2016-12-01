@@ -153,7 +153,7 @@ replace `eth1` with the interface which has internet connectivity.
 sudo sysctl net.ipv4.ip_forward=1 
 sudo iptables -A FORWARD -d 172.24.4.0/24 -j ACCEPT 
 sudo iptables -A FORWARD -s 172.24.4.0/24 -j ACCEPT 
-sudo iptables -t nat -A POSTROUTING -o eth1 -j MASQUERADE 
+sudo iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE 
 ```
 
 ### restart Neutron
@@ -206,7 +206,12 @@ verify that network was created:
 
 
 ```
-glance image-create --name ubuntu --disk-format qcow2 --container-format bare --file <path to ubuntu cloud img>
+glance image-create --name ubuntu --disk-format qcow2 --container-format bare --file wily-server-cloudimg-amd64-disk1.img
+
+neutron net-create sfcNet
+neutron subnet-create sfcNet 10.1.0.0/24 --name sfcSubNet
+neutron router-create router2 
+neutron router-interface-add router2 sfcSubNet
 
 neutron port-create --name p01 sfcNet
 neutron port-create --name p02 sfcNet
