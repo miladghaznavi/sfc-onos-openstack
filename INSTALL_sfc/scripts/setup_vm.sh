@@ -49,8 +49,8 @@ NICS_TO_BIND=(0000:00:04.0 0000:00:05.0 0000:00:06.0 0000:00:07.0) # WRAPPER
 #
 
 sudo apt-get update
-sudo apt-get install -y build-essential linux-generic linux-headers-generic
-sudo apt-get install -y git zip python libconfig-dev gdb
+sudo apt-get install -y build-essential linux-4.4.0-47 linux-headers-4.4.0-47
+sudo apt-get install -y git zip python libconfig-dev gdb libssl-dev
 wget http://fast.dpdk.org/rel/dpdk-16.04.tar.xz
 tar xf dpdk-16.04.tar.xz
 mv dpdk-16.04 dpdk
