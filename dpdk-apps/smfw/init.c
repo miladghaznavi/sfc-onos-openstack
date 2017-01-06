@@ -193,12 +193,10 @@ initialize_port(uint8_t portid, struct rte_mempool* mempool, uint16_t rx_queues,
 	}
 	
 	// Initialize TX-queues for each port.
-	struct rte_eth_txconf *txconf = &dev_info.default_txconf;
-	txconf->txq_flags = 0;
 	for (unsigned i = 0; i < tx_queues; i++) {
 		fflush(stdout);
 		int tx_setup = rte_eth_tx_queue_setup(portid, i, NB_TXD,
-			rte_eth_dev_socket_id(portid), NULL);//txconf);
+			rte_eth_dev_socket_id(portid), NULL);
 		if (tx_setup < 0) {
 			RTE_LOG(INFO, PORT_INIT, "tx setup ERROR %d\n", tx_setup);
 			return 1;
@@ -301,6 +299,46 @@ read_forwarder_config(config_t *config, struct app_config *appconfig) {
 		}
 
 		appconfig->forwarder[i] = forwarder;
+	}
+	return 0;
+}
+
+static int
+read_mirrow_config(config_t *config, struct app_config *appconfig) {
+
+	// get and check config
+	config_setting_t *mirrows_conf = config_lookup(config, CN_MIRROWS);
+	if (mirrows_conf == NULL) {
+		appconfig->nb_mirrow = 0;
+		RTE_LOG(INFO, CONFIG, "No mirrow.\n");
+		return 0;
+	}
+
+	// get number of configured mirrow and allocate memory for a pointer array in app_config
+	appconfig->nb_mirrow = config_setting_length(mirrows_conf);
+	RTE_LOG(INFO, CONFIG, "Allocate memory for %"PRIu32" mirrow.\n", appconfig->nb_mirrow);
+
+	// memory for array of mirrow pointer
+	appconfig->mirrow = rte_malloc(NULL, sizeof(struct mirrow_t*)
+									 * appconfig->nb_mirrow, 64);
+
+	// init mirrow and add it to the mirrow array in app_config
+	for (unsigned i = 0; i < appconfig->nb_mirrow; ++i) {
+		config_setting_t * m_conf = config_setting_get_elem(mirrows_conf, i);
+
+		struct mirrow_t *mirrow = rte_malloc(NULL, sizeof(struct mirrow_t), 64);
+		RTE_LOG(INFO, CONFIG, "New mirrow!\n");
+
+		if (get_mirrow(m_conf, appconfig, mirrow) != 0) {
+			RTE_LOG(ERR, CONFIG, "Could not set up mirrow.\n");
+			config_destroy(config);
+			rte_free(config);
+			rte_free(mirrow);
+			rte_free(appconfig->mirrow);
+			return 1;
+		}
+
+		appconfig->mirrow[i] = mirrow;
 	}
 	return 0;
 }
@@ -525,6 +563,7 @@ read_config(const char * file, struct app_config * appconfig) {
 	appconfig->nb_cores = 0;
 	appconfig->nb_sender = 0;
 	appconfig->nb_forwarder = 0;
+	appconfig->nb_mirrow = 0;
 	appconfig->nb_ports = rte_eth_dev_count();
 	RTE_LOG(INFO, CONFIG, "Got %"PRIu32" ports.\n", appconfig->nb_ports);
 
@@ -652,10 +691,19 @@ read_config(const char * file, struct app_config * appconfig) {
 	}
 
 	/*
+	 * Read configuration of mirrow:
+	 */
+	if (read_mirrow_config(config, appconfig) != 0) {
+		RTE_LOG(ERR, CONFIG, "Configuration failed: could not read mirrow.\n");
+		return 1;
+	}
+
+	/*
 	 * Link receiver to componentes 
 	 */
 
-	unsigned nb_receiving_comp = appconfig->nb_forwarder + appconfig->nb_counter + appconfig->nb_bench_receiver;
+	unsigned nb_receiving_comp = appconfig->nb_forwarder + appconfig->nb_counter
+						 + appconfig->nb_bench_receiver + appconfig->nb_mirrow;
 
 	for (int receiver_i = 0; receiver_i < appconfig->nb_receiver; ++receiver_i) {
 		RTE_LOG(INFO, CONFIG, "Link receiver %"PRIu32"/%"PRIu32".\n", receiver_i, appconfig->nb_receiver);
@@ -701,6 +749,21 @@ read_config(const char * file, struct app_config * appconfig) {
 			receiver->args[comp_i] = fwd;
 			receiver->handler[comp_i] = forwarder_receive_pkt;
 			fwd->rx = receiver;
+			receiver->nb_handler += 1;
+
+			++comp_i;
+		}
+
+		/* Link mirrow */
+		for (int mirrow_i = 0; mirrow_i < appconfig->nb_mirrow; ++mirrow_i) {
+			struct mirrow_t * mirrow = appconfig->mirrow[mirrow_i];
+
+			if (mirrow->rx != receiver) {
+				continue;
+			}
+			receiver->args[comp_i] = mirrow;
+			receiver->handler[comp_i] = mirrow_receive_pkt;
+			mirrow->rx = receiver;
 			receiver->nb_handler += 1;
 
 			++comp_i;

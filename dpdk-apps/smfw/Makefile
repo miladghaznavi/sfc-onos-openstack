@@ -42,7 +42,7 @@ include $(RTE_SDK)/mk/rte.vars.mk
 APP = smfw
 
 # all source are stored in SRCS-y
-SRCS-y := main.c init.c parse.c rxtx.c d_list.c indextable.c components/forwarder.c components/receiver.c components/counter.c components/bench_sender.c components/bench_receiver.c components/arp_sender.c
+SRCS-y := main.c init.c parse.c rxtx.c d_list.c indextable.c components/forwarder.c components/receiver.c components/counter.c components/bench_sender.c components/bench_receiver.c components/arp_sender.c components/mirrow.c
 
 CFLAGS += -g
 CFLAGS += -std=gnu99
@@ -51,6 +51,6 @@ CFLAGS += -std=gnu99
 CFLAGS += $(CFARGS)
 
 
-LDFLAGS=-lconfig
+LDFLAGS=-lconfig -lssl -lcrypto
 
 include $(RTE_SDK)/mk/rte.extapp.mk

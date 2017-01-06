@@ -110,7 +110,7 @@ bench_receiver_receive_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 	if (nb_rx == 0) return;
 	struct bench_receiver_t *br = (struct bench_receiver_t *) arg;
 
-	uint64_t time = (double) clock() / (double) CLOCKS_PER_U_SEC;
+	uint64_t time = rte_get_tsc_cycles() * 1000000/ (double)rte_get_tsc_hz();
 	struct ether_hdr *eth_hdr;
 	for (unsigned index = 0; index < nb_rx; ++index) {
 		// check MAC

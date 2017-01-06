@@ -3,6 +3,7 @@
 
 #include <inttypes.h>
 #include <libconfig.h>
+#include <stdbool.h>
 
 #include <rte_ether.h>
 
@@ -11,7 +12,7 @@
 #define STOP_SEQ 0xFFFFFFFFFFFFFFFF
 #define CLOCKS_PER_U_SEC (CLOCKS_PER_SEC / 1000000)
 #define ETHER_TYPE ETHER_TYPE_IPv4
-#define MAX_TRIES 10
+#define MAX_TRIES 0XFFFFFF
 
 struct app_config;
 
@@ -20,8 +21,11 @@ struct bench_sender_t {
 	struct transmit_t *tx;
 	unsigned core_id;
 
-	/* Source and destination MAC address. */
-	struct ether_addr dst_mac;
+	/* destination MAC addresses (ARRAY). */
+	size_t nb_dst_macs;
+	struct ether_addr *dst_macs;
+	/* Specifeis if a outgoing packet should be compressed */
+	bool *should_compress;
 
 	/* Source and destination IP address. */
 	uint32_t src_ip;
@@ -34,7 +38,7 @@ struct bench_sender_t {
 	struct rte_mempool *pkt_pool;
 	struct rte_mempool *clone_pool;
 
-	double last_tx;
+	uint64_t last_tx;
 	uint64_t pkts_send;
 
 	uint64_t pkts_counter;
@@ -44,10 +48,13 @@ struct bench_sender_t {
 	size_t cur_sequence;
 	size_t nb_sequences;
 	struct bench_sequence_t **sequences;
+	struct rte_mbuf ***send_buf;
 
-	struct rte_mbuf *prototype;
+	size_t nb_prototypes;
+	struct rte_mbuf **prototypes;
 	uint16_t prototype_ip_size; 
-	struct rte_mbuf **send_buf;
+    double time;
+    uint64_t nb_measurements;
 };
 
 struct bench_sequence_t {

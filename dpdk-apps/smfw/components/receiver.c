@@ -17,13 +17,14 @@
 void
 log_receiver(struct receiver_t *receiver) {
     RTE_LOG(INFO, RECEIVER, "------------- Receiver -------------\n");
-    RTE_LOG(INFO, RECEIVER, "| Core ID:          %"PRIu32"\n", receiver->core_id);
-    RTE_LOG(INFO, RECEIVER, "| In port:          %"PRIu32"\n", receiver->in_port);
-    RTE_LOG(INFO, RECEIVER, "| MAC:              "FORMAT_MAC"\n", ARG_V_MAC(receiver->mac));
-    RTE_LOG(INFO, RECEIVER, "| Packets received: %"PRIu64"\n", receiver->pkts_received);
+    RTE_LOG(INFO, RECEIVER, "| Core ID:               %"PRIu32"\n", receiver->core_id);
+    RTE_LOG(INFO, RECEIVER, "| In port:               %"PRIu32"\n", receiver->in_port);
+    RTE_LOG(INFO, RECEIVER, "| MAC:                   "FORMAT_MAC"\n", ARG_V_MAC(receiver->mac));
+    RTE_LOG(INFO, RECEIVER, "| Packets received:      %"PRIu64"\n", receiver->pkts_received);
     if (receiver->nb_polls != 0)
-        RTE_LOG(INFO, RECEIVER, "| Load:             %f\n", receiver->nb_rec / (float) receiver->nb_polls);
-    RTE_LOG(INFO, RECEIVER, "| Time (CPU Cycles):%f\n", receiver->time /(float) receiver->nb_measurements);
+        RTE_LOG(INFO, RECEIVER, "| Load:                  %f\n", receiver->nb_rec / (float) receiver->nb_polls);
+    RTE_LOG(INFO, RECEIVER, "| sum Time (CPU Cycles): %f\n", receiver->time_a /(float) receiver->nb_measurements);
+    RTE_LOG(INFO, RECEIVER, "| rec Time (CPU Cycles): %f\n", receiver->time_b /(float) receiver->nb_measurements);
     RTE_LOG(INFO, RECEIVER, "|***********************************\n");
 
     receiver->nb_polls = 0;
@@ -42,11 +43,14 @@ poll_receiver(struct receiver_t *receiver) {
     const uint16_t port = receiver->in_port;
     struct rte_mbuf **pkts_burst = receiver->burst_buffer;
 
-    uint64_t start = rte_get_tsc_cycles();
+    uint64_t start_a = rte_get_tsc_cycles();
 
     uint64_t nb_rx = rte_eth_rx_burst((uint8_t) port, 0,
                     pkts_burst, BURST_SIZE);
 
+    if (nb_rx > 0) {
+        receiver->time_b += rte_get_tsc_cycles() - start_a;
+    }
 
     receiver->pkts_received += nb_rx;
     if (nb_rx != 0) {
@@ -67,8 +71,10 @@ poll_receiver(struct receiver_t *receiver) {
         // }
     }
 
-    receiver->time += rte_get_tsc_cycles() - start;
-    receiver->nb_measurements += nb_rx;
+    if (nb_rx > 0) {
+        receiver->time_a += rte_get_tsc_cycles() - start_a;
+        receiver->nb_measurements += nb_rx;
+    }
 }
 
 void

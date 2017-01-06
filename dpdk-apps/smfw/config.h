@@ -13,6 +13,8 @@
         
 #define CN_SRC_MAC                  "src_mac"
 #define CN_DST_MAC                  "dst_mac"
+#define CN_MAC                      "mac"
+#define CN_DST                      "dst"
         
 #define CN_SRC_IP                   "src_ip"
 #define CN_DST_IP                   "dst_ip"
@@ -36,6 +38,7 @@
 #define CN_BENCH_RECEIVERS          "bench_receivers"
 #define CN_BENCH_FORWARDERS         "bench_forwarders"
 #define CN_ARP_SENDERS              "arp_senders"
+#define CN_MIRROWS                  "mirrow"
 
 /*
  * Counter configurable fields
@@ -58,6 +61,10 @@
 
 #define CN_CHAIN_INDEX              "chain_index"
 
+/*
+ * Bench configurable fields
+ */
+
 #define CN_SEQUENCE                 "sequence"
 #define CN_PACKET_NB                "packet_nb"
 #define CN_PACKET_SIZE              "packet_size"
@@ -66,5 +73,8 @@
 #define CN_LOG_FILE                 "log_file"
 
 #define CN_LOG_PACKETS              "log_packets"
+
+#define CN_PCKT_DELAY               "delay"
+#define CN_COMPRESS                 "compress"
 
 #endif /* CONFIG_H_ */

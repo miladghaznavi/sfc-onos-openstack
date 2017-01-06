@@ -23,9 +23,9 @@ struct receiver_t {
     void (**handler) (void *arg, struct rte_mbuf **m, int nb_rx);
 
     struct rte_mbuf **burst_buffer;
-    uint64_t time;
+    uint64_t time_a;
+    uint64_t time_b;
     uint64_t nb_measurements;
-
 };
 
 void

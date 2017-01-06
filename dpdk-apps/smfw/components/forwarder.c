@@ -36,35 +36,44 @@ forwarder_receive_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 	
 		/* forwarde packet only if it was send to our MAC. */
 		if (!is_same_ether_addr(&forwarder->receive_port_mac, &eth_old->d_addr)) {
+			RTE_LOG(INFO, FORWARDER, "Wrong d_MAC... "FORMAT_MAC"\n", ARG_V_MAC(eth_old->d_addr));
 			forwarder->pkts_dropped += 1;
 			continue;
 		}
+		struct rte_mbuf *m_clone_pro = rte_pktmbuf_clone(buffer[pkt_i], 
+													forwarder->clone_pool);
+		if (forwarder->decap_on_send)
+			wrapper_remove_data(m_clone_pro);
+		
+		if (forwarder->compress)
+			wrapper_compress(forwarder->pkt_pool, m_clone_pro);
+
+		for (size_t mac_i = 0; mac_i < forwarder->nb_dst_macs; mac_i++) {
+			/* Clone the mbuf. */
+			struct rte_mbuf *m_clone = rte_pktmbuf_clone(m_clone_pro, 
+														forwarder->clone_pool);
+			struct rte_mbuf *header = rte_pktmbuf_clone(forwarder->eth_hdrs[mac_i],
+														forwarder->clone_pool);
+		
+			if (m_clone == NULL || header == NULL) {
+				if (m_clone != NULL) rte_pktmbuf_free(m_clone);
+				else if (header != NULL) rte_pktmbuf_free(m_clone);
 	
-		/* Clone the mbuf. */
-		struct rte_mbuf *m_clone = rte_pktmbuf_clone(buffer[pkt_i], forwarder->clone_pool);
-		struct rte_mbuf *header = rte_pktmbuf_clone(forwarder->eth_hdr, forwarder->clone_pool);
+				forwarder->pkts_failed += 1;
+				continue;
+			}
 	
-		if (m_clone == NULL || header == NULL) {
-			if (m_clone != NULL) rte_pktmbuf_free(m_clone);
-			else if (header != NULL) rte_pktmbuf_free(m_clone);
-
-			forwarder->pkts_failed += 1;
-			continue;
+			// remove ether header
+			rte_pktmbuf_adj(m_clone, sizeof(struct ether_addr) *2);
+	
+			// prepend new ether header:
+			rte_pktmbuf_chain(header, m_clone);
+	
+			// send chained packet:		
+			forwarder->send_buf[send_i] = header;
+			send_i += 1;
 		}
-
-		if (forwarder->decap_on_send) {
-			wrapper_remove_data(m_clone);
-		}
-
-		// remove ether header
-		rte_pktmbuf_adj(m_clone, sizeof(struct ether_addr) *2);
-
-		// prepend new ether header:
-		rte_pktmbuf_chain(header, m_clone);
-
-		// send chained packet:		
-		forwarder->send_buf[send_i] = header;
-		send_i += 1;
+		rte_pktmbuf_free(m_clone_pro);
 	}
 
 
@@ -86,7 +95,9 @@ log_forwarder(struct forwarder_t *f) {
 	RTE_LOG(INFO, FORWARDER, "| Out port:         %"PRIu16"\n", f->tx->port);
 	RTE_LOG(INFO, FORWARDER, "| send port MAC:    "FORMAT_MAC"\n", ARG_V_MAC(f->send_port_mac));
 	RTE_LOG(INFO, FORWARDER, "| receive port MAC: "FORMAT_MAC"\n", ARG_V_MAC(f->receive_port_mac));
-	RTE_LOG(INFO, FORWARDER, "| dst MAC:          "FORMAT_MAC"\n", ARG_V_MAC(f->dst_mac));
+	for (size_t mac_i = 0; mac_i < f->nb_dst_macs; mac_i++)
+		RTE_LOG(INFO, FORWARDER, "| dst MAC :          "FORMAT_MAC"\n", 
+			ARG_V_MAC(f->dst_macs[mac_i]));
 	RTE_LOG(INFO, FORWARDER, "| Packets received: %"PRIu64"\n", f->pkts_received);
 	RTE_LOG(INFO, FORWARDER, "| Packets send:     %"PRIu64"\n", f->pkts_send);
 	RTE_LOG(INFO, FORWARDER, "| Packets dropped:  %"PRIu64"\n", f->pkts_dropped);
@@ -100,15 +111,9 @@ log_forwarder(struct forwarder_t *f) {
 }
 
 static int
-read_mac(config_setting_t *f_conf, const char *name, struct ether_addr *mac) {
-	const char * omac;
-	if (config_setting_lookup_string(f_conf, name, &omac) == CONFIG_TRUE) {
-		if (parse_mac(omac, mac) != 0) {
-			RTE_LOG(ERR, FORWARDER, "MAC has wrong format.\n");
-			return 1;
-		}
-	} else {
-		RTE_LOG(ERR, FORWARDER, "Could not read mac.\n");
+read_mac(const char *mac_str, struct ether_addr *mac) {
+	if (parse_mac(mac_str, mac) != 0) {
+		RTE_LOG(ERR, FORWARDER, "Source MAC has wrong format.\n");
 		return 1;
 	}
 	return 0;
@@ -150,18 +155,42 @@ get_forwarder(config_setting_t *f_conf,
 	rte_eth_macaddr_get(forwarder->tx->port, &forwarder->send_port_mac);
 
 	//DESTINATION MAC
-	if (read_mac(f_conf, CN_DST_MAC, &forwarder->dst_mac) != 0) {
-		RTE_LOG(ERR, FORWARDER, "Could not read destination MAC.\n");
+	config_setting_t *dst_mac_conf = config_setting_get_member(f_conf, CN_DST);
+	if (dst_mac_conf == NULL) {
+		RTE_LOG(INFO, FORWARDER, "No dst macs found.\n");
 		return 1;
 	}
+	forwarder->nb_dst_macs = config_setting_length(dst_mac_conf);
+	RTE_LOG(INFO, FORWARDER, "Got %ld dst MACs\n", forwarder->nb_dst_macs);
+	forwarder->dst_macs = rte_malloc(NULL, sizeof(struct ether_addr)
+										 * forwarder->nb_dst_macs, 64);
+	forwarder->compress = rte_malloc(NULL, sizeof(bool)
+										 * forwarder->nb_dst_macs, 64);
+
+	for (size_t i = 0; i < forwarder->nb_dst_macs; ++i) {
+		config_setting_t *d_cfg = config_setting_get_elem(dst_mac_conf, i);
+
+		const char *mac_str;
+		if (config_setting_lookup_string(d_cfg, CN_MAC, &mac_str) != CONFIG_TRUE) {
+			RTE_LOG(ERR, FORWARDER, "error in config.\n");
+			return 1; 
+		}
+		if (read_mac(mac_str, forwarder->dst_macs + i) != 0) {
+			RTE_LOG(ERR, FORWARDER, "error in config.\n");
+			return 1;
+		}
+		
+	}
+	// SHOULD COMPRESS ON SEND
+	int should_compress = (int) false;
+	config_setting_lookup_bool(f_conf, CN_COMPRESS, &should_compress);
+	forwarder->compress = (bool) should_compress;
 
 	// SHOULD DECAP ON SEND
-	int should_decap;
-	if (config_setting_lookup_bool(f_conf, CN_DECAP_ON_SEND, &should_decap) != CONFIG_TRUE) {
-		RTE_LOG(ERR, FORWARDER, "Could not read %s.\n", CN_DECAP_ON_SEND);
-		return 1;
-	}
+	int should_decap = (int) false;
+	config_setting_lookup_bool(f_conf, CN_DECAP_ON_SEND, &should_decap);
 	forwarder->decap_on_send = (bool) should_decap;
+
 
 	forwarder->pkts_received = 0;
 	forwarder->pkts_send = 0;
@@ -173,23 +202,27 @@ get_forwarder(config_setting_t *f_conf,
 	forwarder->time = 0.0;
 	forwarder->nb_measurements = 0.0;
 
-	forwarder->send_buf = rte_malloc(NULL, sizeof(struct rte_mbuf*) * BURST_SIZE, 64);
+	forwarder->send_buf = rte_malloc(NULL, sizeof(struct rte_mbuf*) * BURST_SIZE * forwarder->nb_dst_macs, 64);
 	forwarder->pkt_pool = appconfig->pkt_pool;
 	forwarder->clone_pool = appconfig->clone_pool;
 
-	forwarder->eth_hdr = rte_pktmbuf_alloc(forwarder->pkt_pool);
-	if (forwarder->eth_hdr == NULL) {
-		RTE_LOG(ERR, FORWARDER, "Could not alloc pktmbuf.\n");
-		return 1;
+	forwarder->eth_hdrs = rte_malloc(NULL, sizeof(void*) * forwarder->nb_dst_macs, 64);
+
+	for (int mac_i=0; mac_i < forwarder->nb_dst_macs; mac_i++) {
+		forwarder->eth_hdrs[mac_i] = rte_pktmbuf_alloc(forwarder->pkt_pool);
+		if (forwarder->eth_hdrs[mac_i] == NULL) {
+			RTE_LOG(ERR, FORWARDER, "Could not alloc pktmbuf.\n");
+			return 1;
+		}
+		struct ether_hdr *eth = rte_pktmbuf_mtod(forwarder->eth_hdrs[mac_i], struct ether_hdr *);
+	
+		ether_addr_copy(&forwarder->dst_macs[mac_i], &eth->d_addr);
+		ether_addr_copy(&forwarder->send_port_mac, &eth->s_addr);
+
+		forwarder->eth_hdrs[mac_i]->data_len = sizeof(struct ether_addr) *2;
+		forwarder->eth_hdrs[mac_i]->pkt_len = sizeof(struct ether_addr) *2;
+		print_packet_hex(forwarder->eth_hdrs[mac_i]);
 	}
-    forwarder->eth_hdr->data_len = sizeof(struct ether_addr) *2;
-    forwarder->eth_hdr->pkt_len = sizeof(struct ether_addr) *2;
 
-	struct ether_addr *eth = rte_pktmbuf_mtod(forwarder->eth_hdr, struct ether_addr *);
-
-	ether_addr_copy(&forwarder->dst_mac, eth);
-	ether_addr_copy(&forwarder->send_port_mac, eth + 1);
-
-	print_packet_hex(forwarder->eth_hdr);
 	return 0;
 }

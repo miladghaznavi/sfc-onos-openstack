@@ -40,6 +40,9 @@
 static bool running;
 struct app_config * appconfig;
 
+static uint64_t last_stat = 0;
+static uint64_t last_used_count = 0;
+
 static
 void handler(int sig) {
     int eno = rte_errno;
@@ -98,8 +101,55 @@ main_loop(void * arg) {
     return 0;
 }
 
+static void
+print_stats(void) {
+    for (unsigned i = 0; i < appconfig->nb_receiver; i++) {
+        log_receiver(appconfig->receiver[i]);
+    }
+
+    for (unsigned i = 0; i < appconfig->nb_forwarder; i++) {
+        log_forwarder(appconfig->forwarder[i]);
+    }
+
+    for (unsigned i = 0; i < appconfig->nb_mirrow; i++) {
+        log_mirrow(appconfig->mirrow[i]);
+    }
+
+    for (unsigned i = 0; i < appconfig->nb_counter; i++) {
+        log_counter(appconfig->counter[i]);
+    }
+
+    /* log bench packet sender. */
+    for (unsigned i = 0; i < appconfig->nb_bench_sender; i++) {
+        log_bench_sender(appconfig->bench_senders[i]);
+    }
+    
+    /* log bench packet receiver. */
+    for (unsigned i = 0; i < appconfig->nb_bench_receiver; i++) {
+        log_bench_receiver(appconfig->bench_receivers[i]);
+    }
+    RTE_LOG(INFO, MAIN, "Clone Pool: %"PRIu32"\n", rte_mempool_count(appconfig->clone_pool));
+    RTE_LOG(INFO, MAIN, "Packet Pool: %"PRIu32"\n", rte_mempool_count(appconfig->pkt_pool));
+
+    uint64_t now = rte_get_tsc_cycles();
+    uint64_t passed_cycles = now - last_stat;
+
+    for (unsigned i = 0; i < appconfig->nb_cores; i++) {
+        struct core_config *core_config = &appconfig->core_configs[i];
+        double used_cycle = 0;
+        for (unsigned i = 0; i < core_config->nb_receiver; i++) {
+            used_cycle += core_config->receiver[i]->time_a;
+        }
+        RTE_LOG(INFO, MAIN, "CPU %d usage: %f %%\n", core_config->core, 
+            (used_cycle - core_config->last_stat_used_cycles) * 100.0f / (double)passed_cycles);
+        core_config->last_stat_used_cycles = used_cycle;
+    }
+
+    last_stat = rte_get_tsc_cycles();
+}
+
 static void*
-print_stats(void *dummy) {
+stats_loop(void *dummy) {
 
     while (running) {
         nanosleep((const struct timespec[]){{2, 0}}, NULL);
@@ -109,30 +159,7 @@ print_stats(void *dummy) {
         const char topLeft[] = { 27, '[', '1', ';', '1', 'H','\0' };
         printf("%s%s", clr, topLeft);
 
-
-        for (unsigned i = 0; i < appconfig->nb_receiver; i++) {
-            log_receiver(appconfig->receiver[i]);
-        }
-
-        for (unsigned i = 0; i < appconfig->nb_forwarder; i++) {
-            log_forwarder(appconfig->forwarder[i]);
-        }
-
-        for (unsigned i = 0; i < appconfig->nb_counter; i++) {
-            log_counter(appconfig->counter[i]);
-        }
-
-        /* log bench packet sender. */
-        for (unsigned i = 0; i < appconfig->nb_bench_sender; i++) {
-            log_bench_sender(appconfig->bench_senders[i]);
-        }
-    
-        /* log bench packet receiver. */
-        for (unsigned i = 0; i < appconfig->nb_bench_receiver; i++) {
-            log_bench_receiver(appconfig->bench_receivers[i]);
-        }
-        RTE_LOG(INFO, MAIN, "Clone Pool: %"PRIu32"\n", rte_mempool_count(appconfig->clone_pool));
-        RTE_LOG(INFO, MAIN, "Packet Pool: %"PRIu32"\n", rte_mempool_count(appconfig->pkt_pool));
+        print_stats();
     }
 }
 
@@ -202,7 +229,7 @@ main(int argc, char *argv[]) {
     
     // RTE_LOG(INFO, MAIN, "Start stat thread.\n");
     pthread_t stat;
-    pthread_create(&stat, NULL, print_stats, NULL);
+    pthread_create(&stat, NULL, stats_loop, NULL);
 
     /* run main loop on master core */
     RTE_LOG(INFO, MAIN, "Start main loop on master core.\n");
@@ -224,7 +251,7 @@ main(int argc, char *argv[]) {
     }
     RTE_LOG(INFO, MAIN, " done.\n");
 
-    print_stats(NULL);
+    print_stats();
 
     /* free all used memory space and exit */
     tear_down(appconfig);

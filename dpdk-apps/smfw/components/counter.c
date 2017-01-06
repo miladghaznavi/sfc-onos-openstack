@@ -34,10 +34,16 @@ fwd_to_wrapper(struct counter_t *counter, struct rte_mbuf *m, struct metadata_t 
 	if (!counter->decap_on_send) {
 		wrapper_add_data(m, meta);
 	}
+    uint64_t start_d = rte_get_tsc_cycles(), diff_d;
+
 	int send = tx_put(counter->tx, &m, 1);
 	while (send == 0) {
 		send = tx_put(counter->tx, &m, 1);
 	}
+
+    diff_d = rte_get_tsc_cycles() - start_d;
+	counter->dTime += diff_d;
+ 
 	counter->pkts_send += send;
 	counter->nb_mbuf--;
 }
@@ -45,9 +51,8 @@ fwd_to_wrapper(struct counter_t *counter, struct rte_mbuf *m, struct metadata_t 
 static void
 fwd_timedout_pkts(struct counter_t *counter) {
 	struct indextable_entry *entry = indextable_oldest(counter->indextable);
-	uint64_t age;
-
-	while (entry != NULL && (age = indextable_entry_age(entry)) > counter->timeout) {
+	
+	while (entry != NULL && indextable_entry_age(entry) > counter->timeout) {
 		fwd_to_wrapper(counter, entry->packet, &entry->meta);
 		indextable_delete(counter->indextable, entry);
 		counter->pkts_timedout += 1;
@@ -67,7 +72,6 @@ count_decissions(uint32_t decissions) {
 
 static struct indextable_entry *
 counter_register(struct counter_t *counter, struct rte_mbuf *packet) {
-
 	struct metadata_t metadata;
  	if (counter->encap_on_register) {
 		metadata.decissions = 0;
@@ -79,6 +83,7 @@ counter_register(struct counter_t *counter, struct rte_mbuf *packet) {
 	struct indextable_entry *entry = indextable_put(counter->indextable, packet);
 	entry->meta = metadata;
 
+    counter->pkts_received_r++;
 	return entry;
 }
 
@@ -86,7 +91,8 @@ void
 counter_register_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 	if (nb_rx == 0) return;
 	struct counter_t *counter = (struct counter_t *) arg;
-		uint64_t start = rte_get_tsc_cycles(), diff;
+		
+    uint64_t start_a = rte_get_tsc_cycles(), diff_a;
 
 	if (nb_rx > rte_ring_free_count(counter->ring)) {
 		RTE_LOG(ERR, COUNTER, "Not enough free entries in ring!\n");
@@ -94,7 +100,6 @@ counter_register_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 
 	// enqueue packet in ring
 	// this methode must be thread safe
-	counter->pkts_received_r += nb_rx;
 	struct rte_mbuf *bulk[nb_rx];
 
 	unsigned nb_registered = 0;
@@ -120,9 +125,9 @@ counter_register_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 							  "(%"PRIu32"/%"PRIu32") free: %"PRIu32"\n", n, nb_rx, 
 							  rte_ring_free_count(counter->ring));
 	}
-		diff = rte_get_tsc_cycles() - start;
-		counter->time += diff ;//* 1000.0 / rte_get_tsc_hz();
-	counter->nb_measurements += nb_rx;
+	diff_a = rte_get_tsc_cycles() - start_a;
+	counter->aTime += diff_a;//* 1000.0 / rte_get_tsc_hz();
+	counter->nb_measurements_a += nb_rx;
 }
 
 void
@@ -131,7 +136,8 @@ counter_firewall_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 
 	poll_counter(counter);
 
-	counter->pkts_received_fw += nb_rx;
+	if (nb_rx != 0) {
+    uint64_t start_c = rte_get_tsc_cycles(), diff_c;
 
 	// check table and send packet 
 	// check if <drop_at> votes are to drop the packet
@@ -159,12 +165,14 @@ counter_firewall_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 
 			int decission_count = count_decissions(meta->decissions);
 
+            counter->pkts_received_fw += nb_rx;
 			if (decission_count >= counter->drop_at) {
 				fwd_to_wrapper(counter, ok_pkt, meta);
 			} else {
 				rte_pktmbuf_free(ok_pkt);
 				counter->pkts_dropped++;
 			}
+
 			indextable_delete(counter->indextable, entry);
 			counter->nb_mbuf--;
 
@@ -174,12 +182,40 @@ counter_firewall_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx) {
 			// print_packet_hex(buffer[i]);
 		}
 	}
-
+    diff_c = rte_get_tsc_cycles() - start_c;
+    counter->cTime += diff_c;//* 1000.0 / rte_get_tsc_hz();
+	}
 	fwd_timedout_pkts(counter);
+
+
+    counter->nb_measurements_b += nb_rx;
+}
+
+void
+poll_counter(struct counter_t *counter) {
+
+	// check if ring contains new mbufs
+	// register new mbufs
+	struct rte_mbuf *buffer[BUFFER_SIZE];
+
+    uint64_t start_b = rte_get_tsc_cycles(), diff_b;
+
+    bool got_pkt = false;
+	while (!rte_ring_empty(counter->ring)) {
+	    got_pkt = true;
+		unsigned nb_pkt = rte_ring_dequeue_burst(counter->ring,(void **) &buffer, BUFFER_SIZE);
+		for (unsigned i = 0; i < nb_pkt; ++i) {
+			counter_register(counter, buffer[i]);
+		}
+	}
+
+	if (got_pkt) {
+    	diff_b = rte_get_tsc_cycles() - start_b;
+    	counter->bTime += diff_b;//* 1000.0 / rte_get_tsc_hz();
+    }
 
 }
 
-//| Firewall port MAC |   send port MAC   |      dst MAC      |
 void
 log_counter(struct counter_t *c) {
 	RTE_LOG(INFO, COUNTER, "-------------------------- Counter --------------------------\n");
@@ -197,27 +233,15 @@ log_counter(struct counter_t *c) {
 		c->pkts_received_fw, c->pkts_received_r, c->pkts_send, c->pkts_dropped, c->pkts_timedout);
 	RTE_LOG(INFO, COUNTER, "| Entries replaced:  %"PRIu64"\n", c->indextable->replaced_entries);
 	RTE_LOG(INFO, COUNTER, "| nb Entries:        %"PRIu32"\n", d_list_len(&c->indextable->tail)-2);
-    RTE_LOG(INFO, COUNTER, "| Time:             %f\n", c->time/c->nb_measurements);
+    RTE_LOG(INFO, COUNTER, "| enqueue Time:      %f\n", c->aTime/c->nb_measurements_a);
+    RTE_LOG(INFO, COUNTER, "| register Time:     %f\n", c->bTime/c->nb_measurements_b);
+    RTE_LOG(INFO, COUNTER, "| compare Time:      %f\n", (c->cTime - c->dTime)/c->nb_measurements_b);
+    RTE_LOG(INFO, COUNTER, "| send Time:         %f\n", c->dTime/c->nb_measurements_b);
 	struct indextable_entry *entry = indextable_oldest(c->indextable);
 	if (entry != NULL) {
 		RTE_LOG(INFO, COUNTER, "| oldest :   %"PRIu64"\n", indextable_entry_age(entry));
 	}
 	RTE_LOG(INFO, COUNTER, "-------------------------------------------------------------\n");
-}
-
-void
-poll_counter(struct counter_t *counter) {
-
-	// check if ring contains new mbufs
-	// register new mbufs
-	struct rte_mbuf *buffer[BUFFER_SIZE];
-
-	while (!rte_ring_empty(counter->ring)) {
-		unsigned nb_pkt = rte_ring_dequeue_burst(counter->ring,(void **) &buffer, BUFFER_SIZE);
-		for (unsigned i = 0; i < nb_pkt; ++i) {
-			counter_register(counter, buffer[i]);
-		}
-	}
 }
 
 static int
@@ -388,8 +412,12 @@ get_counter(config_setting_t *c_conf,
 	counter->pool = appconfig->pkt_pool;
 	counter->clone_pool = appconfig->clone_pool;
 	counter->nb_mbuf = 0;
-    counter->time = 0.0;
-    counter->nb_measurements = 0.0;
+    counter->aTime = 0.0;
+    counter->bTime = 0.0;
+    counter->cTime = 0.0;
+    counter->dTime = 0.0;
+    counter->nb_measurements_a = 0.0;
+    counter->nb_measurements_b = 0.0;
 
 	return 0;
 }

@@ -16,6 +16,7 @@
 #include "components/bench_sender.h"
 #include "components/bench_receiver.h"
 #include "components/arp_sender.h"
+#include "components/mirrow.h"
 
 #define TRUE 1
 #define FALSE 0
@@ -27,6 +28,7 @@
 struct core_config {
 	unsigned core;
 	uint64_t nb_polls;
+	uint64_t last_stat_used_cycles;
 
 	unsigned nb_receiver;
 	struct receiver_t **receiver;
@@ -42,6 +44,9 @@ struct core_config {
 
 	unsigned nb_arp_sender;
 	struct arp_sender_t **arp_senders;
+
+	unsigned nb_mirrow;
+	struct mirrow_t **mirrows;
 };
 
 /**
@@ -85,6 +90,9 @@ struct app_config {
 
 	unsigned nb_arp_sender;
 	struct arp_sender_t **arp_senders;
+
+	unsigned nb_mirrow;
+	struct mirrow_t **mirrow;
 };
 
 /**

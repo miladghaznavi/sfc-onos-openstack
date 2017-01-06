@@ -153,7 +153,7 @@ replace `eth1` with the interface which has internet connectivity.
 sudo sysctl net.ipv4.ip_forward=1 
 sudo iptables -A FORWARD -d 172.24.4.0/24 -j ACCEPT 
 sudo iptables -A FORWARD -s 172.24.4.0/24 -j ACCEPT 
-sudo iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE 
+sudo iptables -t nat -A POSTROUTING -o eth1 -j MASQUERADE 
 ```
 
 ### restart Neutron
@@ -395,12 +395,24 @@ neutron port-chain-create --port-pair-group PPG_W1 --port-pair-group PPG_W2  --p
 ```
 neutron port-chain-delete PC1
 neutron flow-classifier-delete FC1
-neutron port-pair-group-delete PPG_W1
-neutron port-pair-group-delete PPG_W2
-neutron port-pair-group-delete PPG_W3
-neutron port-pair-delete PP_W1
-neutron port-pair-delete PP_W2
-neutron port-pair-delete PP_W3
+neutron port-pair-group-delete PPG_W11
+neutron port-pair-group-delete PPG_FW1
+neutron port-pair-group-delete PPG_W12
+neutron port-pair-group-delete PPG_W21
+neutron port-pair-group-delete PPG_FW2
+neutron port-pair-group-delete PPG_W22
+neutron port-pair-group-delete PPG_W31
+neutron port-pair-group-delete PPG_FW3
+neutron port-pair-group-delete PPG_W32
+neutron port-pair-delete PP_W11
+neutron port-pair-delete PP_FW1
+neutron port-pair-delete PP_W12
+neutron port-pair-delete PP_W21
+neutron port-pair-delete PP_FW2
+neutron port-pair-delete PP_W22
+neutron port-pair-delete PP_W31
+neutron port-pair-delete PP_FW3
+neutron port-pair-delete PP_W32
 ```
 
 ## sfc wrapper and firewall

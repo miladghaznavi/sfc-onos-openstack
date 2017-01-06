@@ -1,5 +1,5 @@
-#ifndef FORWARDER_H_
-#define FORWARDER_H_
+#ifndef MIRROW_H_
+#define MIRROW_H_
 
 #include "receiver.h"
 
@@ -13,21 +13,15 @@
 
 struct app_config;
 
-struct forwarder_t {
+struct mirrow_t {
 	struct transmit_t *tx;
 	struct receiver_t *rx;
-
-	unsigned out_mac;
-
+	
 	struct ether_addr receive_port_mac;
 	struct ether_addr send_port_mac;
 
-	size_t nb_dst_macs;
-	struct ether_addr *dst_macs;
-	struct rte_mbuf **eth_hdrs;
-
-	bool compress;
 	bool decap_on_send;
+	bool compress;
 
 	//stats
 	uint64_t pkts_received;
@@ -48,14 +42,14 @@ struct forwarder_t {
 };
 
 void
-log_forwarder(struct forwarder_t *forwarder);
+log_mirrow(struct mirrow_t *mirrow);
 
 void
-forwarder_receive_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx);
+mirrow_receive_pkt(void *arg, struct rte_mbuf **buffer, int nb_rx);
 
 int
-get_forwarder(config_setting_t *f_conf,
+get_mirrow(config_setting_t *f_conf,
 			struct app_config *appconfig, 
-			struct forwarder_t *forwarder);
+			struct mirrow_t *mirrow);
 
-#endif /* FORWARDER_H_ */
+#endif /* MIRROW_H_ */

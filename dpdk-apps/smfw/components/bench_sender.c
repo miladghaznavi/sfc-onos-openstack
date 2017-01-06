@@ -9,6 +9,7 @@
 #include "../config.h"
 #include "../init.h"
 #include "receiver.h"
+#include "wrapping.h"
 
 #include <stdlib.h>
 #include <inttypes.h>
@@ -16,7 +17,6 @@
 #include <sys/time.h>
 #include <libconfig.h>
 #include <math.h>
-#include <stdbool.h>
 
 #include <rte_malloc.h>
 #include <rte_ether.h>
@@ -32,7 +32,7 @@
 #define BUFF_TIME_AFTR_SWITCH 2000 //ms
 
 struct rte_mbuf *
-gen_prototype(struct bench_sender_t *bench_sender, uint32_t msg_size, uint32_t ip_size) {
+gen_prototype(struct bench_sender_t *bench_sender, uint32_t msg_size, uint32_t ip_size, size_t i_mac) {
 	struct ether_hdr *eth_hdr;
 	struct ipv4_hdr *ip_hdr;
 	struct udp_hdr *udp_hdr;
@@ -51,7 +51,7 @@ gen_prototype(struct bench_sender_t *bench_sender, uint32_t msg_size, uint32_t i
 	eth_hdr = rte_pktmbuf_mtod(m, struct ether_hdr *);
 
 	ether_addr_copy(&bench_sender->tx->send_port_mac, &eth_hdr->s_addr);
-	ether_addr_copy(&bench_sender->dst_mac, &eth_hdr->d_addr);
+	ether_addr_copy(&bench_sender->dst_macs[i_mac], &eth_hdr->d_addr);
 	eth_hdr->ether_type = rte_cpu_to_be_16(ETHER_TYPE);
 	
 	ip_hdr = rte_pktmbuf_mtod_offset(m, struct ipv4_hdr *, sizeof(struct ether_hdr));
@@ -83,12 +83,14 @@ gen_prototype(struct bench_sender_t *bench_sender, uint32_t msg_size, uint32_t i
  * ip_size -> size of ip payload
  */
 static struct rte_mbuf *
-gen_packet(struct bench_sender_t *bench_sender, char *msg, uint32_t msg_size, uint32_t ip_size) {
+gen_packet(struct bench_sender_t *bench_sender, char *msg, size_t msg_size, uint32_t ip_size, size_t i_mac) {
 	
-	if (bench_sender->prototype_ip_size != ip_size) {
-		struct ether_hdr *eth_hdr = rte_pktmbuf_mtod(bench_sender->prototype, struct ether_hdr *);
-		struct ipv4_hdr *ip_hdr = rte_pktmbuf_mtod_offset(bench_sender->prototype, struct ipv4_hdr *, sizeof(struct ether_hdr));
-		struct udp_hdr *udp_hdr = rte_pktmbuf_mtod_offset(bench_sender->prototype, struct udp_hdr *, 
+	if (bench_sender->prototype_ip_size != ip_size) 
+	for (int i = 0; i < bench_sender->nb_dst_macs; i++) {
+
+		struct ether_hdr *eth_hdr = rte_pktmbuf_mtod(bench_sender->prototypes[i], struct ether_hdr *);
+		struct ipv4_hdr *ip_hdr = rte_pktmbuf_mtod_offset(bench_sender->prototypes[i], struct ipv4_hdr *, sizeof(struct ether_hdr));
+		struct udp_hdr *udp_hdr = rte_pktmbuf_mtod_offset(bench_sender->prototypes[i], struct udp_hdr *, 
 			sizeof(struct ether_hdr) + sizeof(struct ipv4_hdr));
 
 		ip_hdr->total_length = rte_cpu_to_be_16(ip_size);
@@ -97,13 +99,22 @@ gen_packet(struct bench_sender_t *bench_sender, char *msg, uint32_t msg_size, ui
 		udp_hdr->dgram_len = rte_cpu_to_be_16(msg_size + sizeof(struct udp_hdr));
 		bench_sender->prototype_ip_size = ip_size;
 	}
+	
 
-	struct rte_mbuf *hdr_mbuf = rte_pktmbuf_clone(bench_sender->prototype, bench_sender->clone_pool);
+	struct rte_mbuf *hdr_mbuf = rte_pktmbuf_clone(bench_sender->prototypes[i_mac], bench_sender->clone_pool);
 	struct rte_mbuf *msg_mbuf = rte_pktmbuf_alloc(bench_sender->pkt_pool);
+	
+	if (msg_mbuf == NULL) {
+		RTE_LOG(ERR, BENCH_SENDER, "Could not alloc mBUF.\n");
+	} else if (hdr_mbuf == NULL) {
+		RTE_LOG(ERR, BENCH_SENDER, "Could not clone mBUF.\n");
+	}
 	msg_mbuf->data_len = ip_size - sizeof(struct udp_hdr) - sizeof(struct ipv4_hdr);
 	msg_mbuf->pkt_len = msg_mbuf->data_len;
 
-	char*msg_start = rte_pktmbuf_mtod(msg_mbuf, char*);
+	uint64_t*msg_start = rte_pktmbuf_mtod(msg_mbuf, uint64_t*);
+	memset(msg_start, 0, sizeof(char)*ip_size - sizeof(struct ipv4_hdr)-sizeof(struct udp_hdr));
+
 	if (msg != NULL) memcpy(msg_start, msg, msg_size);
 
 	rte_pktmbuf_chain(hdr_mbuf, msg_mbuf);
@@ -112,29 +123,33 @@ gen_packet(struct bench_sender_t *bench_sender, char *msg, uint32_t msg_size, ui
 }
 
 bool
-should_wait(struct bench_sender_t *bench_sender, double time) {	
+should_wait(struct bench_sender_t *bench_sender, uint64_t time) {	
 	struct bench_sequence_t *sequence = bench_sender->sequences[bench_sender->cur_sequence];
+	uint64_t last_tx_us = bench_sender->last_tx * 1000000 / rte_get_tsc_hz();
+	uint64_t time_us = time * 1000000 / rte_get_tsc_hz();
 
 	// check if we have to wait between sequences
 	if (likely(sequence->nb_packets_send < sequence->nb_packets)) return false;
 
 	// sequence N -- NOW --- END-SEQ-PCKT ----- sequence N+1 (or end...)
-	if (time - bench_sender->last_tx > ms_to_us(BUFF_TIME_B4_SWITCH) && 
+	if (time_us - last_tx_us > ms_to_us(BUFF_TIME_B4_SWITCH) && 
 						sequence->nb_packets_send <= sequence->nb_packets) {
 
 		uint64_t msg[2];
 		msg[0] = STOP_SEQ;
-		msg[1] = time;
+		msg[1] = time_us;
 
-		struct rte_mbuf *m = gen_packet(bench_sender, (char *) msg, sizeof(uint64_t) *2, 100);
+		struct rte_mbuf *m[bench_sender->nb_dst_macs];
+		for (int i = 0; i < bench_sender->nb_dst_macs; i++)
+			m[i] = gen_packet(bench_sender, (char *) msg, sizeof(uint64_t) *2, 100, i);
 		
 		int send = 0;
-		while (send == 0) {
-			send = tx_put(bench_sender->tx, &m, 1);
+		while (send < bench_sender->nb_dst_macs) {
+			send += tx_put(bench_sender->tx, m + send, bench_sender->nb_dst_macs - send);
 		}
 		sequence->nb_packets_send++;
 
-	} else if (time - bench_sender->last_tx > 
+	} else if (time_us - last_tx_us > 
 		ms_to_us(BUFF_TIME_B4_SWITCH) + ms_to_us(BUFF_TIME_AFTR_SWITCH)) {
 	// sequence N ----- (END-SEQ-PCKT) ------ NOW ----- sequence N+1 (or end...)
 		bench_sender->cur_sequence++;
@@ -147,10 +162,12 @@ void
 poll_bench_sender(struct bench_sender_t *bench_sender) {
 
 	if (unlikely(bench_sender->cur_sequence >= bench_sender->nb_sequences)) return;
-
+	if (unlikely(bench_sender->last_tx == 0)) 
+		bench_sender->last_tx = rte_get_tsc_cycles();
 
 	// get time and current sequence config
-	double time = clock() / (double) CLOCKS_PER_U_SEC;
+	uint64_t time = rte_get_tsc_cycles();
+	uint64_t last_tx_us = bench_sender->last_tx * 1000000 / (double) rte_get_tsc_hz();
 	struct bench_sequence_t *sequence = bench_sender->sequences[bench_sender->cur_sequence];
 
 	// check if we should wait and send nothing
@@ -158,7 +175,7 @@ poll_bench_sender(struct bench_sender_t *bench_sender) {
 
 	// determine the number of packets to send
 	double elapsed_time = time - bench_sender->last_tx;
-	uint64_t send_count = elapsed_time * sequence->pkt_per_sec / (float) US_PER_S;
+	uint64_t send_count = elapsed_time * sequence->pkt_per_sec / (double) rte_get_tsc_hz();
 
 	// check that packet count is valid
 	if (send_count == 0) return;
@@ -174,25 +191,34 @@ poll_bench_sender(struct bench_sender_t *bench_sender) {
 		}
 		uint64_t msg[2];
 		msg[0] = nb_packets_send;
-		msg[1] = time;
+		msg[1] = time * 1000000 / (double) rte_get_tsc_hz();
 
-		bench_sender->send_buf[i] = gen_packet(bench_sender, (char *) msg, 
-			sizeof(uint64_t) *2, sequence->ip_size);
+		for (int i_mac = 0; i_mac < bench_sender->nb_dst_macs; i_mac++) {
+			struct rte_mbuf *pkt = gen_packet(bench_sender, (char *) msg, 
+								sizeof(uint64_t) *2, sequence->ip_size, i_mac);
+
+			if (bench_sender->should_compress[i_mac]) {
+				uint64_t start = rte_get_tsc_cycles(), diff;
+				wrapper_compress(bench_sender->pkt_pool, pkt);
+			    diff = rte_get_tsc_cycles() - start;
+			    bench_sender->time += diff;// * 1000.0 / rte_get_tsc_hz();
+			    bench_sender->nb_measurements++;
+			}
+
+			bench_sender->send_buf[i_mac][i] = pkt;
+		}
 		nb_packets_send++;
 	}
 
 	// send the generated packets
 	// int send = tx_put(bench_sender->tx, bench_sender->send_buf, send_count);
-	int send = 0;
-	int tries = 0;
-	while (send < send_count && tries < MAX_TRIES) {
-		send += tx_put(bench_sender->tx, (bench_sender->send_buf + send), send_count - send);
-		tries++;
+	int send;
+	for (int i_mac = 0; i_mac < bench_sender->nb_dst_macs; i_mac++) {
+		send = 0;
+		while (send < send_count) {
+			send += tx_put(bench_sender->tx, (bench_sender->send_buf[i_mac] + send), send_count - send);
+		}
 	}
-	for (size_t not_send = send; not_send < send_count; not_send++) {
-		rte_pktmbuf_free(bench_sender->send_buf[not_send]);
-	}
-
 	sequence->nb_packets_send += send;
 	bench_sender->pkts_send += send;
 
@@ -201,14 +227,15 @@ poll_bench_sender(struct bench_sender_t *bench_sender) {
 	bench_sender->poll_counter += 1;
 
 	// remember the time!
-	bench_sender->last_tx += elapsed_time * (send / (double) send_count);
+	bench_sender->last_tx = time;
 }
 
 void
 log_bench_sender(struct bench_sender_t *bs) {
 	RTE_LOG(INFO, BENCH_SENDER, "------------- Bench Sender -------------\n");
 	RTE_LOG(INFO, BENCH_SENDER, "| Source MAC:          "FORMAT_MAC"\n", ARG_V_MAC(bs->tx->send_port_mac));
-	RTE_LOG(INFO, BENCH_SENDER, "| Destination MAC:     "FORMAT_MAC"\n", ARG_V_MAC(bs->dst_mac));
+	for (int i=0; i<bs->nb_dst_macs; i++)
+		RTE_LOG(INFO, BENCH_SENDER, "| Destination MAC:     "FORMAT_MAC"\n", ARG_V_MAC(bs->dst_macs[i]));
 	RTE_LOG(INFO, BENCH_SENDER, "| Source IP:           "FORMAT_IP"\n", ARG_V_IP(bs->src_ip));
 	RTE_LOG(INFO, BENCH_SENDER, "| Destination IP:      "FORMAT_IP"\n", ARG_V_IP(bs->dst_ip));
 	RTE_LOG(INFO, BENCH_SENDER, "| UDP estination port: %"PRIu16"\n", bs->dst_udp_port);
@@ -221,6 +248,9 @@ log_bench_sender(struct bench_sender_t *bs) {
 		RTE_LOG(INFO, BENCH_SENDER, "| - progress:      %"PRIu64"/%"PRIu64"\n", 
 			bs->sequences[bs->cur_sequence]->nb_packets_send, 
 			bs->sequences[bs->cur_sequence]->nb_packets);
+	if (bs->nb_measurements != 0)
+		RTE_LOG(INFO, BENCH_SENDER, "| wrapping CPU cycle:%.2f\n", 
+			bs->time / bs->nb_measurements);
 	RTE_LOG(INFO, BENCH_SENDER, "----------------------------------------\n");
 	bs->pkts_counter = 0;
 	bs->should_pkts_counter = 0;
@@ -228,15 +258,9 @@ log_bench_sender(struct bench_sender_t *bs) {
 }
 
 static int
-read_mac(config_setting_t *bs_conf, const char *name, struct ether_addr *mac) {
-	const char *omac;
-	if (config_setting_lookup_string(bs_conf, name, &omac) == CONFIG_TRUE) {
-		if (parse_mac(omac, mac) != 0) {
-			RTE_LOG(ERR, BENCH_SENDER, "Source MAC has wrong format.\n");
-			return 1;
-		}
-	} else {
-		RTE_LOG(ERR, BENCH_SENDER, "Could not read mac.\n");
+read_mac(const char *mac_str, struct ether_addr *mac) {
+	if (parse_mac(mac_str, mac) != 0) {
+		RTE_LOG(ERR, BENCH_SENDER, "Source MAC has wrong format.\n");
 		return 1;
 	}
 	return 0;
@@ -289,7 +313,8 @@ int
 get_bench_sender(config_setting_t *bs_conf, 
 				struct app_config *appconfig, 
 				struct bench_sender_t *bench_sender) {
-
+	
+	RTE_LOG(INFO, BENCH_SENDER, "INIT Bench sender:\n");
 	// CORE ID
 	if (config_setting_lookup_int(bs_conf, CN_CORE_ID, &bench_sender->core_id) != CONFIG_TRUE) {
 		RTE_LOG(ERR, BENCH_SENDER, "Could not read %s.\n", CN_CORE_ID);
@@ -310,9 +335,39 @@ get_bench_sender(config_setting_t *bs_conf,
 	bench_sender->tx = appconfig->sender[sender_i];
 
 	//DESTINATION MAC
-	if (read_mac(bs_conf, CN_DST_MAC, &bench_sender->dst_mac) != 0) {
-		RTE_LOG(ERR, BENCH_SENDER, "Could not read %s.\n", CN_DST_MAC);
+	config_setting_t *dst_mac_conf = config_setting_get_member(bs_conf, CN_DST);
+	if (dst_mac_conf == NULL) {
+		RTE_LOG(INFO, BENCH_SENDER, "No dst macs found.\n");
 		return 1;
+	}
+	bench_sender->nb_dst_macs = config_setting_length(dst_mac_conf);
+	RTE_LOG(INFO, BENCH_SENDER, "Got %ld dst MACs\n", bench_sender->nb_dst_macs);
+	bench_sender->dst_macs = rte_malloc(NULL, sizeof(struct ether_addr)
+										 * bench_sender->nb_dst_macs, 64);
+	bench_sender->should_compress = rte_malloc(NULL, sizeof(bool)
+										 * bench_sender->nb_dst_macs, 64);
+
+	for (size_t i = 0; i < bench_sender->nb_dst_macs; ++i) {
+		config_setting_t *d_cfg = config_setting_get_elem(dst_mac_conf, i);
+
+		const char *mac_str;
+		if (config_setting_lookup_string(d_cfg, CN_MAC, &mac_str) != CONFIG_TRUE) {
+			RTE_LOG(ERR, BENCH_SENDER, "error in bench sender config.\n");
+			return 1; 
+		}
+		if (read_mac(mac_str, bench_sender->dst_macs + i) != 0) {
+			RTE_LOG(ERR, BENCH_SENDER, "error in bench sender config.\n");
+			return 1;
+		}
+		
+		int should_compress;
+		if (config_setting_lookup_bool(d_cfg, CN_COMPRESS, &should_compress) != CONFIG_TRUE) {
+			RTE_LOG(ERR, BENCH_SENDER, "Could not read %s.\n", CN_COMPRESS);
+			return 1;
+		}
+		bench_sender->should_compress[i] = (bool) should_compress;
+		RTE_LOG(INFO, BENCH_SENDER, "Mac: "FORMAT_MAC" Compress: %d\n", 
+			ARG_V_MAC(bench_sender->dst_macs[i]), should_compress);
 	}
 
 	// SOURCE IP
@@ -341,7 +396,7 @@ get_bench_sender(config_setting_t *bs_conf,
 	{
 		config_setting_t *sequences_conf = config_setting_get_member(bs_conf, CN_SEQUENCE);
 		if (sequences_conf == NULL) {
-			RTE_LOG(INFO, BENCH_SENDER, "No sequence.");
+			RTE_LOG(INFO, BENCH_SENDER, "No sequence.\n");
 			return 1;
 		}
 		bench_sender->nb_sequences = config_setting_length(sequences_conf);
@@ -367,19 +422,22 @@ get_bench_sender(config_setting_t *bs_conf,
 			bench_sender->sequences[i] = sequence;
 		}
 	}
-	clock_t c_time = clock();
-	bench_sender->last_tx = ms_to_us(s_to_ms(c_time / CLOCKS_PER_SEC));
 
 	bench_sender->pkt_pool = appconfig->pkt_pool;
 	bench_sender->clone_pool = appconfig->clone_pool;
 	bench_sender->pkts_send = 0;
 	bench_sender->pkts_counter = 0;
 	bench_sender->poll_counter = 0;
-	bench_sender->prototype = NULL;
-	bench_sender->prototype_ip_size = 0;
-	bench_sender->send_buf = rte_malloc(NULL, sizeof(void*) * BURST_SIZE, 64);
-	
-	bench_sender->prototype = gen_prototype(bench_sender, 100, 150);
+	bench_sender->last_tx = 0;
+	bench_sender->nb_prototypes = bench_sender->nb_dst_macs;
+	bench_sender->prototypes = rte_malloc(NULL, sizeof(void*) * bench_sender->nb_prototypes, 64);
+	bench_sender->send_buf = rte_malloc(NULL, sizeof(void*) * bench_sender->nb_dst_macs, 64);
+
+	for (int i = 0; i < bench_sender->nb_dst_macs; i++) {
+		bench_sender->prototypes[i] = gen_prototype(bench_sender, 100, 150, i);
+		bench_sender->send_buf[i] = rte_malloc(NULL, sizeof(void*) * BURST_SIZE, 64);
+	}
+
 	bench_sender->prototype_ip_size = 150;
 
 	log_bench_sender(bench_sender);
